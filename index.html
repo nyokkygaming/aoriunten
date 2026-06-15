@@ -1,0 +1,1688 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>ナメられたら終わり 〜煽り運転シミュレーター〜</title>
+<style>
+  /* External web font import removed for faster startup. */
+  :root{
+    --road:#3a3a3a;--road-line:#f5d020;--grass:#2d5a2d;
+    --neon-pink:#ff2d9b;--neon-cyan:#16f0e6;--neon-yellow:#ffe600;--danger:#ff2b2b;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{height:100%;}
+  body{background:#000;font-family:'DotGothic16',monospace;color:#fff;overflow:hidden;
+    display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;user-select:none;}
+  #game{position:relative;width:min(440px,100vw);height:min(820px,100vh);background:#000;overflow:hidden;box-shadow:0 0 0 100vmax #000;}
+
+  #road{position:absolute;inset:0;background:linear-gradient(90deg,var(--grass) 0 12%,var(--road) 12% 88%,var(--grass) 88% 100%);}
+  #lanes{position:absolute;left:50%;top:0;width:8px;height:100%;transform:translateX(-50%);}
+  .dash{position:absolute;left:0;width:8px;height:54px;background:var(--road-line);}
+
+  /* ===== CARS (SVG) ===== */
+  .car{position:absolute;left:50%;transform:translateX(-50%);z-index:5;width:60px;height:104px;}
+  .car svg{width:100%;height:100%;display:block;filter:drop-shadow(0 6px 4px rgba(0,0,0,.5));}
+  #player{bottom:150px;z-index:8;transition:filter .06s;}
+  .enemy{top:-120px;}
+  .npc{top:-120px;z-index:4;opacity:.95;}
+  .animal{position:absolute;top:30px;left:50%;transform:translateX(-50%);font-size:26px;z-index:6;}
+  .plate{position:absolute;bottom:-4px;left:50%;transform:translateX(-50%);font-size:10px;background:#fff;color:#000;padding:0 3px;border-radius:2px;white-space:nowrap;z-index:7;}
+  .gauge-wrap{position:absolute;top:-14px;left:50%;transform:translateX(-50%);width:62px;height:7px;background:#222;border:1px solid #555;border-radius:4px;overflow:hidden;z-index:7;}
+  .gauge-fill{height:100%;width:100%;background:linear-gradient(90deg,#33ff66,#ffe600,#ff2b2b);}
+
+  /* headlight beam */
+  #beam{position:absolute;bottom:254px;left:50%;width:120px;height:280px;transform:translateX(-50%);
+    background:radial-gradient(ellipse at bottom,rgba(255,255,210,.85),rgba(255,255,210,0) 70%);
+    z-index:7;opacity:0;pointer-events:none;}
+  #beam.on{opacity:1;}
+  #dangerEdge{position:absolute;inset:0;z-index:9;pointer-events:none;opacity:0;
+    box-shadow:inset 0 0 70px 10px rgba(255,0,0,.9);transition:opacity .08s;}
+  #stopBtn{position:absolute;bottom:150px;left:50%;transform:translateX(-50%);z-index:31;
+    padding:12px 26px;font-family:'Reggae One';font-size:22px;color:#1a0000;
+    background:linear-gradient(180deg,#ffe600,#ff9500);border:4px solid #fff;border-radius:12px;
+    box-shadow:0 0 24px #ff9500,0 6px 0 #b35900;cursor:pointer;display:none;text-align:center;
+    animation:stopPulse .5s ease-in-out infinite alternate;}
+  #stopBtn.show{display:block;}
+  #stopBtn small{display:block;font-size:11px;color:#5a1a00;font-family:'DotGothic16';margin-top:2px;}
+  @keyframes stopPulse{from{transform:translateX(-50%) scale(1);}to{transform:translateX(-50%) scale(1.08);}}
+
+  /* ===== HUD ===== */
+  #hud{position:absolute;top:0;left:0;right:0;padding:8px 12px;z-index:20;display:flex;justify-content:space-between;pointer-events:none;}
+  #score{font-family:'Reggae One';font-size:24px;color:var(--neon-yellow);text-shadow:2px 2px 0 #b30000,0 0 12px #ff0;transition:transform .08s;}
+  #score.pop{transform:scale(1.35);}
+  #kills{font-size:12px;color:#bbb;text-align:right;}
+  #kills.pop{color:var(--neon-pink);text-shadow:0 0 10px var(--neon-pink);transform:scale(1.3);transition:transform .1s;}
+  /* floating +score */
+  .floatpt{position:absolute;left:14px;top:34px;z-index:21;font-family:'Reggae One';font-size:22px;
+    color:#fff;text-shadow:0 0 8px var(--neon-yellow),2px 2px 0 #b30000;pointer-events:none;
+    animation:floatup .8s ease-out forwards;}
+  @keyframes floatup{0%{opacity:0;transform:translateY(8px) scale(.7);}20%{opacity:1;transform:translateY(0) scale(1.2);}100%{opacity:0;transform:translateY(-30px) scale(1);}}
+  /* milestone burst */
+  #burst{position:absolute;left:50%;top:120px;transform:translateX(-50%);z-index:22;font-family:'Reggae One';
+    font-size:32px;color:var(--neon-cyan);text-shadow:0 0 14px var(--neon-cyan);opacity:0;pointer-events:none;white-space:nowrap;}
+  #burst.show{animation:burst .9s ease-out;}
+  @keyframes burst{0%{opacity:0;transform:translateX(-50%) scale(.4);}30%{opacity:1;transform:translateX(-50%) scale(1.3) rotate(-3deg);}100%{opacity:0;transform:translateX(-50%) scale(1.1);}}
+  /* レベルアップ専用バナー（しっかり読める時間表示） */
+  #levelBanner{position:absolute;left:8px;right:8px;top:160px;z-index:33;pointer-events:none;
+    text-align:center;opacity:0;}
+  #levelBanner.show{animation:lvbanner 3.2s ease-out;}
+  #levelBanner .lvTitle{font-family:'Reggae One';font-size:38px;color:var(--neon-yellow);
+    text-shadow:0 0 18px #ff9500,3px 3px 0 #b35900;line-height:1.2;}
+  #levelBanner .lvSub{font-family:'DotGothic16';font-size:19px;color:#fff;margin-top:10px;
+    background:rgba(0,0,0,.6);display:inline-block;padding:6px 16px;border-radius:20px;border:2px solid var(--neon-yellow);}
+  @keyframes lvbanner{0%{opacity:0;transform:scale(.5);}10%{opacity:1;transform:scale(1.1);}18%{transform:scale(1);}85%{opacity:1;transform:scale(1);}100%{opacity:0;transform:scale(1);}}
+
+  /* ===== CRASH AFTERMATH (不釣り合いにリアルな悲惨さ) ===== */
+  #crashScene{position:absolute;inset:0;z-index:40;display:none;pointer-events:none;}
+  #crashScene.show{display:block;pointer-events:auto;}
+  #crashVignette{position:absolute;inset:0;background:radial-gradient(ellipse at 50% 45%,transparent 30%,rgba(0,0,0,.55) 75%,rgba(0,0,0,.85) 100%);opacity:0;transition:opacity 1.2s;}
+  #crashScene.show #crashVignette{opacity:1;}
+  /* リアルな炎（複数レイヤーの揺らぎ） */
+  .fire{position:absolute;left:0;top:0;width:120px;height:160px;transform:translate(-50%,-70%);will-change:transform;}
+  .fire .flame{transform-origin:50% 100%;animation:flick .14s infinite alternate;}
+  .fire .flame2{animation:flick2 .19s infinite alternate;}
+  @keyframes flick{from{transform:scaleY(1) scaleX(1);}to{transform:scaleY(1.12) scaleX(.92) translateY(-3px);}}
+  @keyframes flick2{from{transform:scaleY(.96) scaleX(1.05);}to{transform:scaleY(1.15) scaleX(.9);}}
+  /* 黒煙 */
+  .smoke{position:absolute;width:60px;height:60px;border-radius:50%;background:radial-gradient(circle,rgba(40,40,40,.9),rgba(20,20,20,0) 70%);filter:blur(6px);animation:rise 2.6s ease-out forwards;}
+  @keyframes rise{0%{opacity:.85;transform:translate(-50%,0) scale(.4);}100%{opacity:0;transform:translate(-50%,-260px) scale(2.6);}}
+  /* 余韻テキスト */
+  #crashCaption{position:absolute;left:0;right:0;bottom:90px;text-align:center;z-index:42;opacity:0;
+    font-family:'DotGothic16';font-size:15px;color:#ddd;letter-spacing:1px;transition:opacity 1.5s;text-shadow:0 1px 3px #000;}
+  #crashScene.show #crashCaption.on{opacity:1;}
+  /* ヘッドライト点滅・サイレンの赤青 */
+  #sirens{position:absolute;inset:0;opacity:0;background:linear-gradient(90deg,rgba(255,0,0,.0),rgba(255,0,0,.18) 50%,rgba(0,80,255,.18));mix-blend-mode:screen;}
+  #crashScene.siren #sirens{animation:siren 1s steps(2) infinite;}
+  @keyframes siren{0%{opacity:.5;filter:hue-rotate(0deg);}100%{opacity:.5;filter:hue-rotate(180deg);}}
+
+  /* ===== 土下座 一枚絵 ===== */
+  #dogezaScene{position:absolute;inset:0;z-index:48;display:none;background:#0a0a0a;
+    flex-direction:column;align-items:center;justify-content:center;padding:20px;}
+  #dogezaScene.show{display:flex;animation:dogezaIn .5s ease-out;}
+  @keyframes dogezaIn{from{opacity:0;}to{opacity:1;}}
+  .dogeza-art{width:min(360px,90%);}
+  .dogeza-art svg{width:100%;height:auto;display:block;}
+  .dogeza-cap{margin-top:18px;font-family:'Reggae One';font-size:22px;color:#fff;text-align:center;
+    text-shadow:0 2px 6px #000;opacity:0;animation:capIn .8s ease-out .6s forwards;}
+  @keyframes capIn{to{opacity:1;}}
+  #combo{font-size:13px;color:var(--neon-cyan);text-align:right;min-height:18px;text-shadow:0 0 6px var(--neon-cyan);margin-top:4px;}
+
+  /* driver speech (self) */
+  #selfTalk{position:absolute;bottom:262px;left:50%;transform:translateX(-50%);z-index:18;
+    background:#000;border:2px solid var(--neon-yellow);color:var(--neon-yellow);
+    padding:5px 12px;border-radius:14px;font-size:15px;white-space:nowrap;opacity:0;transition:opacity .2s;}
+  #selfTalk.show{opacity:1;}
+  #selfTalk:after{content:'';position:absolute;bottom:-8px;left:50%;transform:translateX(-50%);
+    border:6px solid transparent;border-top-color:var(--neon-yellow);}
+
+  /* enemy reaction wipe */
+  #wipe{position:absolute;left:8px;bottom:300px;z-index:19;display:flex;align-items:center;gap:8px;
+    transform:translateX(-120%);transition:transform .3s;}
+  #wipe.show{transform:translateX(0);}
+  #wipe .face{width:54px;height:54px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font-size:30px;border:3px solid var(--neon-cyan);}
+  #wipe .line{background:rgba(0,0,0,.85);border:1px solid var(--neon-cyan);color:#cffcfa;padding:4px 10px;border-radius:10px;font-size:13px;max-width:230px;}
+
+  /* ===== NAMERARETA BUTTON ===== */
+  #choiceBtns{position:absolute;bottom:190px;left:0;right:0;z-index:30;display:flex;gap:14px;justify-content:center;align-items:flex-end;
+    opacity:0;pointer-events:none;transition:opacity .15s;}
+  #choiceBtns.show{opacity:1;pointer-events:auto;}
+  #nameBtn{padding:14px 26px;font-family:'Reggae One';font-size:26px;color:#fff;
+    background:linear-gradient(180deg,#ff5ebd,#ff009d);border:5px solid var(--neon-yellow);border-radius:14px;
+    box-shadow:0 0 0 4px #b3007a,0 8px 0 #7a0052,0 0 30px var(--neon-pink);
+    cursor:pointer;text-shadow:2px 2px 0 #a3006b;animation:btnflash .4s steps(2) infinite;}
+  #passBtn{padding:12px 20px;font-family:'DotGothic16';font-size:17px;color:#cde;
+    background:#23262e;border:3px solid #5a6577;border-radius:12px;box-shadow:0 5px 0 #131519;cursor:pointer;}
+  #passBtn:active{transform:translateY(3px);box-shadow:0 2px 0 #131519;}
+  @keyframes btnflash{0%{filter:hue-rotate(0deg) brightness(1.3);}100%{filter:hue-rotate(40deg) brightness(1);}}
+  #nameBtn.locked{background:linear-gradient(180deg,#555,#3a3a3a);border-color:#777;box-shadow:0 0 0 4px #2a2a2a,0 6px 0 #1a1a1a;animation:none;color:#bbb;font-size:18px;text-shadow:none;}
+  #nameBtn.shakeNo{animation:shakeNo .3s;}
+  @keyframes shakeNo{0%,100%{transform:translateX(0);}25%{transform:translateX(-8px);}75%{transform:translateX(8px);}}
+
+  /* ===== AORI CONTROLS ===== */
+  #aoriPanel{position:absolute;bottom:0;left:0;right:0;z-index:25;display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:8px;
+    background:linear-gradient(0deg,rgba(0,0,0,.92),transparent);transform:translateY(115%);transition:transform .3s;}
+  #aoriPanel.show{transform:translateY(0);}
+  .aori-btn{padding:13px 6px;font-family:'DotGothic16';font-size:16px;background:#1a1a1a;color:#fff;
+    border:2px solid var(--neon-cyan);border-radius:8px;cursor:pointer;text-align:center;
+    box-shadow:0 0 10px rgba(22,240,230,.3) inset;touch-action:manipulation;}
+  .aori-btn:active{transform:scale(.96);background:#333;}
+  .aori-btn small{display:block;font-size:10px;color:#888;margin-top:2px;}
+  .aori-btn .heat{display:block;height:3px;margin-top:4px;background:#444;border-radius:2px;overflow:hidden;}
+  .aori-btn .heat i{display:block;height:100%;width:0;background:var(--danger);transition:width .15s;}
+
+  /* ===== OVERLAYS ===== */
+  .overlay{position:absolute;inset:0;z-index:50;display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;}
+  .overlay.show{display:flex;}
+  #nameFlash{position:absolute;inset:0;z-index:45;display:none;align-items:center;justify-content:center;
+    background:repeating-conic-gradient(from 0deg,#ff009d 0deg 20deg,#ffe600 20deg 40deg,#16f0e6 40deg 60deg);animation:spin .5s linear infinite;}
+  #nameFlash.show{display:flex;}
+  #nameFlash span{font-family:'Reggae One';font-size:60px;color:#fff;-webkit-text-stroke:4px #000;
+    text-shadow:6px 6px 0 #ff009d,-3px -3px 0 #16f0e6;transform:rotate(-8deg);animation:bounce .25s steps(2) infinite;
+    background:#000;padding:10px 20px;border:6px dashed #ffe600;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  @keyframes bounce{0%{transform:rotate(-8deg) scale(1);}100%{transform:rotate(4deg) scale(1.12);}}
+
+  #title h1{font-family:'Reggae One';font-size:34px;line-height:1.3;color:var(--neon-yellow);text-shadow:3px 3px 0 #ff009d;margin-bottom:6px;}
+  #title p{font-size:14px;color:#bbb;margin-bottom:30px;}
+  .startbtn{font-family:'Reggae One';font-size:24px;padding:16px 40px;background:linear-gradient(180deg,#ff5ebd,#ff009d);
+    color:#fff;border:none;border-radius:12px;box-shadow:0 6px 0 #7a0052,0 0 24px var(--neon-pink);cursor:pointer;}
+  .startbtn:active{transform:translateY(4px);box-shadow:0 2px 0 #7a0052;}
+
+  #result{background:#000;}
+  #result .score-big{font-family:'Reggae One';font-size:20px;color:var(--neon-yellow);}
+  #result .score-num{font-size:50px;color:#fff;text-shadow:0 0 16px var(--neon-yellow);margin:4px 0 16px;}
+  #result .arrow{font-size:26px;color:var(--danger);margin:6px 0;}
+  #verdictBox{border:3px solid var(--danger);background:#140000;padding:18px 16px;border-radius:8px;width:100%;max-width:360px;}
+  #verdictBox .crime{font-size:15px;color:#ff6b6b;margin-bottom:8px;}
+  #verdictBox .sentence{font-family:'Reggae One';font-size:28px;color:var(--danger);text-shadow:0 0 10px var(--danger);line-height:1.2;}
+  #verdictBox .extra{font-size:12px;color:#888;margin-top:14px;text-align:left;line-height:1.7;border-top:1px dashed #444;padding-top:10px;}
+
+  #gameover{background:#000;}
+  #gameover .reason{font-family:'Reggae One';font-size:28px;color:var(--danger);text-shadow:0 0 12px var(--danger);margin-bottom:10px;line-height:1.3;}
+  #gameover .sub{font-size:14px;color:#aaa;}
+
+  #horror{background:#000;}
+  #horror .q{font-family:'Reggae One';font-size:44px;color:#7a0000;text-shadow:0 0 2px #ff0000,0 0 30px #5a0000;letter-spacing:2px;
+    animation:flicker 3s infinite,creep 6s ease-in-out infinite alternate;}
+  @keyframes flicker{0%,19%,21%,23%,80%,100%{opacity:1;}20%,22%,55%{opacity:.3;}}
+  @keyframes creep{from{transform:scale(1);}to{transform:scale(1.06);}}
+  #horror .again{margin-top:60px;font-size:13px;color:#333;cursor:pointer;}
+  #horror .again:hover{color:#666;}
+  .replay{margin-top:22px;font-size:14px;color:#888;text-decoration:underline;cursor:pointer;}
+/* ===== VISUAL REFRESH 2026: midnight arcade / polished mobile game ===== */
+  /* External web font import removed for faster startup. */
+:root{
+  --road:#171b25;
+  --road-edge:#242b38;
+  --road-line:#ffe66b;
+  --grass:#071b21;
+  --neon-pink:#ff4fb8;
+  --neon-cyan:#43f4ff;
+  --neon-yellow:#ffe66b;
+  --danger:#ff3b51;
+  --panel:rgba(8,12,20,.72);
+  --glass:rgba(255,255,255,.08);
+}
+body{
+  font-family:'M PLUS Rounded 1c','Zen Kaku Gothic New',system-ui,sans-serif;
+  background:
+    radial-gradient(circle at 50% -10%,rgba(99,92,255,.24),transparent 32%),
+    radial-gradient(circle at 14% 18%,rgba(67,244,255,.22),transparent 28%),
+    radial-gradient(circle at 88% 24%,rgba(255,79,184,.20),transparent 24%),
+    linear-gradient(180deg,#070914,#03040a 58%,#000);
+}
+body::before{
+  content:'';position:fixed;inset:0;pointer-events:none;opacity:.42;
+  background:
+    linear-gradient(115deg,transparent 0 44%,rgba(67,244,255,.10) 45%,transparent 48% 100%),
+    linear-gradient(245deg,transparent 0 60%,rgba(255,79,184,.08) 61%,transparent 64% 100%);
+}
+#game{
+  width:min(460px,100vw);
+  height:min(840px,100vh);
+  border-radius:28px;
+  background:#05070d;
+  box-shadow:
+    0 30px 90px rgba(0,0,0,.75),
+    0 0 0 1px rgba(255,255,255,.10),
+    0 0 42px rgba(67,244,255,.16),
+    0 0 0 100vmax #020308;
+  border:1px solid rgba(255,255,255,.12);
+  isolation:isolate;
+}
+#game::before{
+  content:'';position:absolute;inset:0;z-index:60;pointer-events:none;border-radius:28px;
+  background:
+    linear-gradient(180deg,rgba(255,255,255,.12),transparent 12%,transparent 86%,rgba(255,255,255,.05)),
+    repeating-linear-gradient(0deg,rgba(255,255,255,.035) 0 1px,transparent 1px 4px);
+  mix-blend-mode:screen;opacity:.28;
+}
+#game::after{
+  content:'';position:absolute;inset:0;z-index:59;pointer-events:none;border-radius:28px;
+  box-shadow:inset 0 0 90px rgba(0,0,0,.58), inset 0 0 0 1px rgba(255,255,255,.08);
+}
+#road{
+  background:
+    radial-gradient(circle at 18% 7%,rgba(255,79,184,.20),transparent 11%),
+    radial-gradient(circle at 84% 12%,rgba(67,244,255,.18),transparent 12%),
+    linear-gradient(90deg,
+      #06151b 0 9%,
+      #0c2530 9% 12%,
+      var(--road-edge) 12% 16%,
+      var(--road) 16% 84%,
+      var(--road-edge) 84% 88%,
+      #0c2530 88% 91%,
+      #06151b 91% 100%);
+}
+#road::before{
+  content:'';position:absolute;inset:0;pointer-events:none;opacity:.95;
+  background:
+    repeating-linear-gradient(180deg,
+      transparent 0 32px,
+      rgba(67,244,255,.55) 32px 35px,
+      transparent 35px 96px),
+    linear-gradient(90deg,transparent 0 10.8%,rgba(255,255,255,.38) 10.8% 11.4%,transparent 11.4% 88.6%,rgba(255,255,255,.38) 88.6% 89.2%,transparent 89.2%),
+    linear-gradient(90deg,transparent 0 14.5%,rgba(255,255,255,.12) 14.5% 15%,transparent 15% 85%,rgba(255,255,255,.12) 85% 85.5%,transparent 85.5%);
+}
+#road::after{
+  content:'';position:absolute;inset:0;pointer-events:none;opacity:.55;mix-blend-mode:overlay;
+  background:
+    radial-gradient(circle at 34% 18%,rgba(255,255,255,.10) 0 1px,transparent 1.6px),
+    radial-gradient(circle at 65% 66%,rgba(255,255,255,.08) 0 1px,transparent 1.5px),
+    repeating-linear-gradient(180deg,rgba(255,255,255,.025) 0 2px,transparent 2px 10px);
+  background-size:28px 34px,34px 46px,100% 20px;
+}
+#lanes{width:10px;filter:drop-shadow(0 0 8px rgba(255,230,107,.85));z-index:2;}
+.dash{
+  left:0;width:10px;height:62px;border-radius:999px;
+  background:linear-gradient(180deg,#fff8b8,var(--road-line) 48%,#d8a72a);
+  box-shadow:0 0 16px rgba(255,230,107,.75), inset 0 2px 0 rgba(255,255,255,.55);
+}
+.car{width:64px;height:112px;filter:drop-shadow(0 16px 12px rgba(0,0,0,.50));}
+.car svg{filter:drop-shadow(0 7px 7px rgba(0,0,0,.45));}
+.enemy .animal,.npc .animal{
+  top:28px;font-size:27px;filter:drop-shadow(0 2px 3px rgba(0,0,0,.65));
+}
+.plate{
+  bottom:-9px;font-family:'M PLUS Rounded 1c',sans-serif;font-weight:800;font-size:10px;
+  color:#10131a;background:linear-gradient(180deg,#fff,#dfe8ff);
+  border:1px solid rgba(0,0,0,.22);box-shadow:0 4px 9px rgba(0,0,0,.35);padding:1px 6px;border-radius:999px;
+}
+.gauge-wrap{
+  top:-17px;width:68px;height:8px;background:rgba(5,7,12,.82);
+  border:1px solid rgba(255,255,255,.28);border-radius:999px;box-shadow:0 3px 10px rgba(0,0,0,.4);
+}
+.gauge-fill{border-radius:999px;background:linear-gradient(90deg,#55ff8a 0%,#ffe66b 52%,#ff3b51 100%);box-shadow:0 0 10px rgba(255,230,107,.35);}
+#beam{
+  width:166px;height:330px;bottom:247px;
+  background:radial-gradient(ellipse at bottom,rgba(255,246,180,.72),rgba(255,230,107,.28) 34%,rgba(67,244,255,.12) 55%,rgba(255,255,210,0) 72%);
+  mix-blend-mode:screen;filter:blur(.5px);
+}
+#dangerEdge{box-shadow:inset 0 0 80px 18px rgba(255,35,55,.88),inset 0 0 18px rgba(255,255,255,.35);}
+#hud{padding:14px 16px;gap:10px;align-items:flex-start;}
+#score{
+  font-family:'M PLUS Rounded 1c',sans-serif;font-size:25px;font-weight:900;letter-spacing:.02em;
+  color:#111827;text-shadow:none;
+  padding:7px 13px;border-radius:18px;
+  background:linear-gradient(180deg,#fff6aa,#ffe66b 55%,#ffc23d);
+  box-shadow:0 9px 0 rgba(143,93,0,.75),0 16px 28px rgba(0,0,0,.32),0 0 22px rgba(255,230,107,.36);
+  border:1px solid rgba(255,255,255,.6);
+}
+#hud>div:last-child{
+  background:rgba(4,7,13,.62);backdrop-filter:blur(12px);
+  border:1px solid rgba(255,255,255,.16);border-radius:18px;padding:8px 10px;box-shadow:0 12px 28px rgba(0,0,0,.28);
+}
+#kills{font-size:12px;color:#d6ecff;font-weight:800;}
+#combo{font-size:12px;color:var(--neon-cyan);font-weight:800;}
+.floatpt{font-family:'M PLUS Rounded 1c',sans-serif;font-weight:900;color:#fff;font-size:22px;text-shadow:0 0 14px var(--neon-yellow),0 3px 0 rgba(0,0,0,.45);}
+#wipe{bottom:312px;filter:drop-shadow(0 12px 20px rgba(0,0,0,.45));}
+#wipe .face{border:2px solid rgba(255,255,255,.65);background:linear-gradient(180deg,#fff,#dff7ff);box-shadow:0 0 18px rgba(67,244,255,.38);}
+#wipe .line{
+  background:rgba(5,8,15,.84);backdrop-filter:blur(10px);border:1px solid rgba(67,244,255,.7);
+  color:#effcff;border-radius:16px;padding:7px 12px;font-weight:700;
+}
+#selfTalk{
+  font-family:'M PLUS Rounded 1c',sans-serif;font-weight:900;bottom:270px;
+  background:rgba(8,11,18,.82);backdrop-filter:blur(9px);border:1px solid rgba(255,230,107,.85);
+  color:#fff4a6;box-shadow:0 0 18px rgba(255,230,107,.28);padding:7px 14px;border-radius:999px;
+}
+#choiceBtns{bottom:195px;gap:12px;}
+#nameBtn{
+  font-family:'M PLUS Rounded 1c',sans-serif;font-weight:900;letter-spacing:.03em;
+  background:linear-gradient(180deg,#ff7bd0,#ff2ea6 55%,#d9007f);
+  border:2px solid rgba(255,255,255,.78);border-radius:22px;padding:16px 27px;
+  box-shadow:0 9px 0 #7a0052,0 16px 30px rgba(0,0,0,.42),0 0 34px rgba(255,79,184,.55),inset 0 2px 0 rgba(255,255,255,.38);
+  text-shadow:0 3px 0 rgba(75,0,48,.6);
+}
+#passBtn{
+  font-family:'M PLUS Rounded 1c',sans-serif;font-weight:800;border-radius:18px;background:rgba(16,23,34,.86);backdrop-filter:blur(10px);
+  border:1px solid rgba(255,255,255,.24);color:#dce8f6;box-shadow:0 7px 0 rgba(4,7,12,.8),0 14px 24px rgba(0,0,0,.34);
+}
+#nameBtn.locked{background:linear-gradient(180deg,#5a6474,#2b3240);border-color:rgba(255,255,255,.22);box-shadow:0 7px 0 #121722;color:#cad3df;}
+#aoriPanel{
+  grid-template-columns:1fr 1fr;gap:9px;padding:10px 12px 14px;
+  background:linear-gradient(180deg,transparent,rgba(4,6,12,.62) 8%,rgba(4,6,12,.92));
+  backdrop-filter:blur(12px);
+}
+.aori-btn{
+  font-family:'M PLUS Rounded 1c',sans-serif;font-weight:900;font-size:16px;line-height:1.1;
+  border-radius:18px;padding:14px 8px 12px;border:1px solid rgba(67,244,255,.55);
+  background:linear-gradient(180deg,rgba(35,48,68,.92),rgba(12,18,30,.94));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 10px 20px rgba(0,0,0,.30),0 0 20px rgba(67,244,255,.10);
+}
+.aori-btn small{font-weight:700;color:#9fb4c9;font-size:10px;}
+.aori-btn:active{transform:translateY(3px) scale(.98);}
+.aori-btn .heat{height:5px;background:rgba(255,255,255,.12);}
+.aori-btn .heat i{background:linear-gradient(90deg,#ffe66b,#ff3b51);box-shadow:0 0 10px rgba(255,59,81,.75);}
+#stopBtn{
+  font-family:'M PLUS Rounded 1c',sans-serif;font-weight:900;color:#111827;
+  background:linear-gradient(180deg,#fff9be,#ffe66b 55%,#ff9f1c);border:2px solid rgba(255,255,255,.9);border-radius:22px;
+  box-shadow:0 9px 0 #9a5300,0 18px 34px rgba(0,0,0,.44),0 0 32px rgba(255,230,107,.48),inset 0 2px 0 rgba(255,255,255,.55);
+}
+#burst,#levelBanner .lvTitle,#title h1,#gameover .reason,#verdictBox .sentence{
+  font-family:'M PLUS Rounded 1c',sans-serif;font-weight:900;
+}
+#burst{font-size:31px;color:#fff;text-shadow:0 0 18px var(--neon-cyan),0 4px 0 rgba(0,0,0,.5);}
+#levelBanner{top:155px;}
+#levelBanner .lvTitle{font-size:36px;color:#111827;background:linear-gradient(180deg,#fff7b8,#ffe66b);display:inline-block;padding:8px 18px;border-radius:24px;box-shadow:0 10px 0 rgba(143,93,0,.75),0 0 30px rgba(255,230,107,.45);text-shadow:none;}
+#levelBanner .lvSub{font-family:'M PLUS Rounded 1c',sans-serif;font-weight:900;background:rgba(4,8,15,.78);backdrop-filter:blur(9px);border:1px solid rgba(255,230,107,.6);}
+.overlay{background:rgba(3,5,10,.72);backdrop-filter:blur(10px);}
+#title{
+  background:
+    radial-gradient(circle at 50% 28%,rgba(67,244,255,.18),transparent 34%),
+    radial-gradient(circle at 50% 66%,rgba(255,79,184,.16),transparent 32%),
+    rgba(2,4,10,.78);
+}
+#title::before{
+  content:'';position:absolute;inset:18px;border-radius:26px;pointer-events:none;
+  border:1px solid rgba(255,255,255,.14);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.12),0 30px 80px rgba(0,0,0,.38);
+  background:linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.02));
+}
+#title>*{position:relative;z-index:1;}
+#title h1{
+  font-size:40px;line-height:1.15;letter-spacing:.03em;margin-bottom:12px;
+  color:transparent;background:linear-gradient(180deg,#fff,#ffe66b 45%,#ff4fb8 100%);-webkit-background-clip:text;background-clip:text;
+  -webkit-text-stroke:1px rgba(255,255,255,.26);text-shadow:0 9px 24px rgba(0,0,0,.45),0 0 28px rgba(255,79,184,.35);
+}
+#title p{font-size:14px;color:#d6e4f1;line-height:1.75;margin-bottom:30px;text-shadow:0 2px 8px rgba(0,0,0,.6);}
+.startbtn{
+  font-family:'M PLUS Rounded 1c',sans-serif;font-weight:900;font-size:23px;border-radius:999px;padding:16px 42px;
+  background:linear-gradient(180deg,#67f7ff,#18d7e7 52%,#0089ff);border:1px solid rgba(255,255,255,.72);
+  box-shadow:0 10px 0 #005b9f,0 20px 36px rgba(0,0,0,.4),0 0 38px rgba(67,244,255,.52),inset 0 2px 0 rgba(255,255,255,.55);
+  color:#021018;text-shadow:0 1px 0 rgba(255,255,255,.45);
+}
+#nameFlash{background:radial-gradient(circle,#fff 0 9%,#ffe66b 10% 22%,#ff4fb8 23% 42%,#43f4ff 43% 60%,#090b14 61% 100%);}
+#nameFlash span{
+  font-family:'M PLUS Rounded 1c',sans-serif;font-weight:900;border-radius:26px;border:3px solid #fff;
+  box-shadow:0 18px 50px rgba(0,0,0,.42),0 0 42px rgba(255,255,255,.42);-webkit-text-stroke:2px #000;
+}
+#result,#gameover,#horror{background:radial-gradient(circle at 50% 20%,rgba(255,59,81,.16),transparent 30%),rgba(2,4,9,.88);}
+#result .score-big{font-family:'M PLUS Rounded 1c',sans-serif;font-weight:900;color:#dbeafe;}
+#result .score-num{font-family:'M PLUS Rounded 1c',sans-serif;font-weight:900;color:#fff;text-shadow:0 0 18px var(--neon-yellow),0 8px 30px rgba(0,0,0,.55);}
+#verdictBox{
+  border:1px solid rgba(255,59,81,.68);border-radius:22px;background:linear-gradient(180deg,rgba(50,8,17,.85),rgba(12,5,10,.88));backdrop-filter:blur(10px);
+  box-shadow:0 18px 50px rgba(0,0,0,.42),0 0 32px rgba(255,59,81,.22);padding:20px 18px;
+}
+#verdictBox .crime{font-weight:900;color:#ff9aa7;}
+#verdictBox .sentence{font-size:30px;color:#fff;text-shadow:0 0 16px var(--danger),0 4px 0 rgba(0,0,0,.5);}
+#verdictBox .extra{font-size:12px;color:#b8c2d2;border-top:1px dashed rgba(255,255,255,.20);}
+.replay{font-family:'M PLUS Rounded 1c',sans-serif;font-weight:800;color:#b7c8dc;text-decoration:none;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:999px;padding:9px 17px;}
+#gameover .reason{font-size:30px;color:#fff;text-shadow:0 0 18px var(--danger),0 4px 0 rgba(0,0,0,.5);}
+#gameover .sub{color:#c7d2df;line-height:1.7;}
+#horror .q{font-family:'M PLUS Rounded 1c',sans-serif;font-weight:900;color:#fff;text-shadow:0 0 10px #ff001e,0 0 40px #7a0000;}
+#horror .again{font-family:'M PLUS Rounded 1c',sans-serif;font-weight:800;color:#5c6474;}
+#crashVignette{background:radial-gradient(ellipse at 50% 45%,transparent 22%,rgba(0,0,0,.5) 68%,rgba(0,0,0,.9) 100%);}
+#crashCaption{font-family:'M PLUS Rounded 1c',sans-serif;font-weight:800;background:rgba(0,0,0,.42);backdrop-filter:blur(6px);padding:10px 18px;width:max-content;max-width:86%;margin:auto;border-radius:999px;}
+.dogeza-cap{font-family:'M PLUS Rounded 1c',sans-serif;font-weight:900;text-shadow:0 4px 16px #000;}
+@media (max-height:680px){
+  #game{border-radius:0;height:100vh;}
+  #game::before,#game::after{border-radius:0;}
+  #title h1{font-size:34px;}
+  #score{font-size:21px;padding:6px 11px;}
+  #choiceBtns{bottom:176px;}
+  #aoriPanel{gap:7px;padding-bottom:9px;}
+  .aori-btn{padding:10px 7px;font-size:14px;}
+}
+
+
+
+/* ===== THREE-LANE ROAD + ENDGAME VISUAL PATCH ===== */
+#road{
+  background:
+    radial-gradient(circle at 18% 7%,rgba(255,79,184,.20),transparent 11%),
+    radial-gradient(circle at 84% 12%,rgba(67,244,255,.18),transparent 12%),
+    linear-gradient(90deg,
+      #06151b 0 8%,
+      #0c2530 8% 12%,
+      var(--road-edge) 12% 15.5%,
+      #151923 15.5% 84.5%,
+      var(--road-edge) 84.5% 88%,
+      #0c2530 88% 92%,
+      #06151b 92% 100%);
+}
+#road::before{
+  content:'';position:absolute;inset:0;pointer-events:none;opacity:.95;
+  background:
+    repeating-linear-gradient(180deg,
+      transparent 0 32px,
+      rgba(67,244,255,.55) 32px 35px,
+      transparent 35px 96px),
+    linear-gradient(90deg,transparent 0 14.7%,rgba(255,255,255,.44) 14.7% 15.4%,transparent 15.4% 84.6%,rgba(255,255,255,.44) 84.6% 85.3%,transparent 85.3%),
+    linear-gradient(90deg,transparent 0 32.5%,rgba(255,255,255,.07) 32.5% 33.1%,transparent 33.1% 66.9%,rgba(255,255,255,.07) 66.9% 67.5%,transparent 67.5%);
+}
+#lanes{
+  left:50%;width:112px;height:100%;transform:translateX(-50%);z-index:2;
+  filter:drop-shadow(0 0 8px rgba(255,230,107,.85));
+}
+.dash{
+  left:0;width:9px;height:60px;border-radius:999px;
+  background:linear-gradient(180deg,#fff8b8,var(--road-line) 48%,#d8a72a);
+  box-shadow:0 0 16px rgba(255,230,107,.75), inset 0 2px 0 rgba(255,255,255,.55);
+}
+.dash::after{
+  content:'';position:absolute;left:112px;top:0;width:9px;height:60px;border-radius:999px;
+  background:inherit;box-shadow:0 0 16px rgba(255,230,107,.75), inset 0 2px 0 rgba(255,255,255,.55);
+}
+#kills.endgame{color:#ffdee7;text-shadow:0 0 10px rgba(255,79,184,.8);}
+#combo.endgame{color:#ffe66b;text-shadow:0 0 12px rgba(255,230,107,.8);}
+#nameBtn.final-trap{animation:btnflash .24s steps(2) infinite;}
+#game.endgame #road::after{opacity:.78;}
+#game.endgame #dangerEdge{box-shadow:inset 0 0 80px 18px rgba(255,35,55,.70),inset 0 0 18px rgba(255,255,255,.35);}
+
+
+
+/* ===== REALISTIC DOGEZA CUTSCENE PATCH ===== */
+#dogezaScene{
+  background:radial-gradient(circle at 50% 32%,rgba(255,255,255,.07),transparent 26%),#030509;
+  padding:16px;
+}
+#dogezaScene .dogeza-art{
+  width:min(420px,96%);
+  border-radius:22px;
+  overflow:hidden;
+  box-shadow:0 24px 70px rgba(0,0,0,.62),0 0 42px rgba(255,255,255,.10);
+  border:1px solid rgba(255,255,255,.16);
+  background:#000;
+}
+#dogezaScene .dogeza-art img{
+  width:100%;
+  height:auto;
+  display:block;
+}
+#dogezaScene .dogeza-cap{
+  max-width:92%;
+  margin-top:16px;
+  padding:10px 16px;
+  border-radius:999px;
+  background:rgba(0,0,0,.55);
+  border:1px solid rgba(255,255,255,.16);
+  backdrop-filter:blur(8px);
+}
+
+
+
+/* ===== ENDING HORROR SCREEN FIX ===== */
+#horror{
+  gap:14px;
+  padding:18px;
+  justify-content:center;
+  background:#020307;
+  overflow:hidden;
+}
+#horror .horror-photo{
+  position:relative;
+  width:min(380px,94vw);
+  max-height:66vh;
+  border-radius:18px;
+  overflow:hidden;
+  border:1px solid rgba(255,255,255,.18);
+  box-shadow:0 18px 46px rgba(0,0,0,.58),0 0 34px rgba(255,0,30,.18);
+  background:#05070b;
+  flex:0 0 auto;
+}
+#horror .horror-photo img{
+  display:block;
+  width:100%;
+  height:auto;
+  filter:brightness(.58) contrast(1.22) saturate(.82);
+}
+#horror .horror-photo::after{
+  content:'';
+  position:absolute;
+  inset:0;
+  z-index:1;
+  pointer-events:none;
+  background:radial-gradient(circle at 50% 48%,rgba(0,0,0,.08),rgba(0,0,0,.64) 78%),linear-gradient(180deg,rgba(0,0,0,.08),rgba(0,0,0,.72));
+}
+#horror .horror-photo .q{
+  position:absolute;
+  inset:0;
+  z-index:2;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:18px;
+  margin:0;
+  text-align:center;
+  pointer-events:none;
+  font-size:clamp(34px,10vw,56px);
+  line-height:1.18;
+  color:#fff;
+  -webkit-text-stroke:1px rgba(70,0,0,.8);
+  text-shadow:0 0 8px #ff001e,0 0 28px #7a0000,0 4px 12px #000;
+  animation:flicker 3s infinite,creep 6s ease-in-out infinite alternate;
+}
+#horror .horror-cap{
+  position:relative;
+  z-index:3;
+  width:min(380px,94vw);
+  font-size:13px;
+  line-height:1.7;
+  color:#d5dbe6;
+  background:rgba(8,12,18,.86);
+  border:1px solid rgba(255,255,255,.14);
+  border-radius:14px;
+  padding:10px 14px;
+  box-shadow:0 10px 26px rgba(0,0,0,.35);
+}
+#horror .homebtn{
+  position:relative;
+  z-index:3;
+  font-family:'M PLUS Rounded 1c','DotGothic16',sans-serif;
+  font-weight:900;
+  font-size:16px;
+  color:#111827;
+  background:linear-gradient(180deg,#ffffff,#d8e4f4);
+  border:0;
+  border-radius:999px;
+  padding:12px 26px;
+  box-shadow:0 8px 0 #657085,0 0 20px rgba(255,255,255,.20);
+  cursor:pointer;
+  pointer-events:auto;
+}
+#horror .homebtn:active{transform:translateY(4px);box-shadow:0 4px 0 #657085;}
+@media(max-height:700px){
+  #horror{gap:9px;padding:12px;}
+  #horror .horror-photo{width:min(330px,92vw);max-height:58vh;}
+  #horror .horror-cap{font-size:12px;padding:8px 12px;}
+  #horror .homebtn{font-size:14px;padding:10px 22px;}
+}
+
+
+/* ===== PERFORMANCE PATCH: lighter paint/compositing ===== */
+#hud>div:last-child,
+#wipe .line,
+#selfTalk,
+#passBtn,
+#aoriPanel,
+#levelBanner .lvSub,
+.overlay,
+#verdictBox,
+#crashCaption,
+#dogezaScene .dogeza-cap{
+  -webkit-backdrop-filter:none !important;
+  backdrop-filter:none !important;
+}
+.car svg{filter:none !important;}
+.smoke{filter:none !important;}
+body.low-spec #game::before,
+body.low-spec #game::after,
+body.low-spec #road::after{display:none !important;}
+body.low-spec .car,
+body.low-spec .car svg,
+body.low-spec .animal,
+body.low-spec #wipe,
+body.low-spec #beam,
+body.low-spec #lanes{filter:none !important;}
+body.low-spec .smoke{display:none !important;}
+body.low-spec #nameFlash{animation:none !important;}
+body.low-spec #nameBtn{animation:none !important;}
+
+</style>
+</head>
+<body>
+<div id="game">
+  <div id="road"><div id="lanes"></div></div>
+  <div id="beam"></div>
+  <div id="dangerEdge"></div>
+  <div id="player" class="car"></div>
+
+  <div id="hud">
+    <div id="score">0 pt</div>
+    <div><div id="kills"></div><div id="combo"></div></div>
+  </div>
+
+  <div id="wipe"><div class="face">🐢</div><div class="line"></div></div>
+  <div id="selfTalk"></div>
+  <div id="choiceBtns">
+    <button id="nameBtn">ナメられた！</button>
+    <button id="passBtn">見逃す</button>
+  </div>
+
+  <button id="stopBtn">⚠ 停車させる ⚠<small>前に出て道をふさぐ</small></button>
+  <div id="aoriPanel">
+    <button class="aori-btn" data-act="beam">パッシング<small>ハイビーム連打</small><span class="heat"><i></i></span></button>
+    <button class="aori-btn" data-act="horn">クラクション<small>プッ プッ</small><span class="heat"><i></i></span></button>
+    <button class="aori-btn" data-act="tail">車間ツメ<small>長押しで接近</small><span class="heat"><i></i></span></button>
+    <button class="aori-btn" data-act="block">幅寄せ・蛇行<small>追い込む</small><span class="heat"><i></i></span></button>
+  </div>
+
+  <div id="nameFlash"><span>ナメられた！</span></div>
+  <div id="burst"></div>
+  <div id="levelBanner"><div class="lvTitle"></div><div class="lvSub"></div></div>
+  <div id="crashScene"><div id="crashVignette"></div><div id="sirens"></div><div id="crashCaption"></div></div>
+  <div id="dogezaScene"><div class="dogeza-art" id="dogezaArt"></div><div class="dogeza-cap" id="dogezaCap"></div></div>
+
+  <div id="title" class="overlay show">
+    <h1>ナメられたら<br>終わり</h1>
+    <p>〜煽り運転シミュレーター〜<br><span style="font-size:11px;color:#666;">※あなたは「キレやすい運転者」です</span></p>
+    <button class="startbtn" onclick="startGame()">運転をはじめる</button>
+    <div class="noticeBox">
+      <p>※このゲームは、煽り運転を肯定・推奨するものではありません。プレイヤーをあえて加害者側に置くことで、その危うさを描く交通安全啓発コンテンツです。現実では絶対に真似しないでください。</p>
+      <p>※罪状・量刑の表示は啓発目的の簡略表現であり、個別事案における法的判断を示すものではありません。</p>
+      <p>※一部の演出画像にはAI生成画像を使用しています。</p>
+    </div>
+  </div>
+
+  <div id="result" class="overlay">
+    <div class="score-big">あなたのハイスコア</div>
+    <div class="score-num" id="finalScore">0 pt</div>
+    <div class="arrow">▼ 換算 ▼</div>
+    <div id="verdictBox"></div>
+    <div class="replay" onclick="toHorror()">…結果を見る</div>
+  </div>
+
+  <div id="gameover" class="overlay">
+    <div class="reason" id="goReason"></div>
+    <div class="sub" id="goSub"></div>
+    <div class="replay" onclick="showResult(true)">…罪状を見る</div>
+  </div>
+
+  <div id="horror" class="overlay">
+    <div class="horror-photo">
+      <img id="endingAccidentImg" alt="事故現場のイメージ">
+      <div class="q">楽しかったですか？</div>
+    </div>
+    <div class="horror-cap">その先にあるのは、こういう現実かもしれません。</div>
+    <button class="homebtn" onclick="location.reload()">ホームに戻る</button>
+  </div>
+</div>
+
+<script>
+// ---------- car SVG ----------
+function carSVG(body,roof,antenna){
+  const uid='car'+Math.random().toString(36).slice(2,8);
+  return `<svg viewBox="0 0 60 104" aria-hidden="true">
+    <defs>
+      <linearGradient id="paint-${uid}" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#ffffff" stop-opacity=".35"/>
+        <stop offset="22%" stop-color="${body}"/>
+        <stop offset="100%" stop-color="#05070d" stop-opacity=".92"/>
+      </linearGradient>
+      <linearGradient id="glass-${uid}" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#dff7ff" stop-opacity=".95"/>
+        <stop offset="48%" stop-color="${roof}" stop-opacity=".85"/>
+        <stop offset="100%" stop-color="#05070d" stop-opacity=".94"/>
+      </linearGradient>
+      <linearGradient id="lamp-${uid}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#fff8c8"/><stop offset="100%" stop-color="#ffcc49"/>
+      </linearGradient>
+      <filter id="inner-${uid}"><feDropShadow dx="0" dy="1" stdDeviation="1.2" flood-color="#000" flood-opacity=".38"/></filter>
+    </defs>
+    <ellipse cx="30" cy="96" rx="23" ry="6" fill="#000" opacity=".35"/>
+    <rect x="3" y="24" width="7" height="18" rx="3" fill="#0b0d13"/>
+    <rect x="50" y="24" width="7" height="18" rx="3" fill="#0b0d13"/>
+    <rect x="3" y="67" width="7" height="18" rx="3" fill="#0b0d13"/>
+    <rect x="50" y="67" width="7" height="18" rx="3" fill="#0b0d13"/>
+    <path d="M18 6H42C49 6 55 15 55 27v52c0 13-6 21-16 21H21C11 100 5 92 5 79V27C5 15 11 6 18 6Z" fill="url(#paint-${uid})" stroke="rgba(255,255,255,.5)" stroke-width="1.4" filter="url(#inner-${uid})"/>
+    <path d="M15 18C17 13 21 11 30 11s13 2 15 7l3 20H12l3-20Z" fill="url(#glass-${uid})" stroke="rgba(255,255,255,.42)" stroke-width="1"/>
+    <path d="M12 58h36l-4 22c-2 6-6 9-14 9s-12-3-14-9l-4-22Z" fill="url(#glass-${uid})" stroke="rgba(255,255,255,.25)" stroke-width="1"/>
+    <path d="M12 48h36" stroke="rgba(255,255,255,.34)" stroke-width="2" stroke-linecap="round"/>
+    <path d="M18 9C9 25 9 73 18 96" stroke="rgba(255,255,255,.28)" stroke-width="2" stroke-linecap="round" fill="none"/>
+    <path d="M43 10C51 31 51 72 42 95" stroke="#000" stroke-opacity=".25" stroke-width="2" stroke-linecap="round" fill="none"/>
+    <rect x="13" y="92" width="34" height="5" rx="2" fill="#0b0d13" opacity=".82"/>
+    <circle cx="17" cy="14" r="3.6" fill="url(#lamp-${uid})"/>
+    <circle cx="43" cy="14" r="3.6" fill="url(#lamp-${uid})"/>
+    <circle cx="17" cy="14" r="7" fill="#ffe16b" opacity=".16"/>
+    <circle cx="43" cy="14" r="7" fill="#ffe16b" opacity=".16"/>
+    ${antenna?'<path d="M30 49V31" stroke="#111" stroke-width="1.6" stroke-linecap="round"/><circle cx="30" cy="29" r="2.4" fill="#111"/><path d="M25 30c3-3 7-3 10 0" stroke="#111" stroke-width="1" fill="none" opacity=".65"/>':''}
+  </svg>`;
+}
+const PLAYER_SVG=carSVG('#c41e1e','#7a1010');
+const ENEMY_SVGS=['#2b6cff','#11aa55','#ff9f1c','#9b5de5','#f15bb5'];
+const NPC_SVGS=['#888','#aaa','#6b7a8f','#c0c0c0'];
+
+const lanesEl=document.getElementById('lanes');
+for(let i=0;i<14;i++){const d=document.createElement('div');d.className='dash';d.style.top=(i*90)+'px';lanesEl.appendChild(d);}
+let roadOffset=0;
+
+// 三車線道路：自車は中央車線、NPC/割り込み車は左右車線を使う
+const LANE_OFFSET=106;
+const LANE_LEFT=-LANE_OFFSET, LANE_CENTER=0, LANE_RIGHT=LANE_OFFSET;
+function laneCss(offset){return `calc(50% + ${offset}px)`;}
+function randomSideLane(){return Math.random()<.5?LANE_LEFT:LANE_RIGHT;}
+
+const G={running:false,mode:'drive',score:0,kills:0,combo:0,lastAct:null,level:1,sequencing:false,
+  heat:{beam:0,horn:0,tail:0,block:0},spawnTimer:0,playerLane:0};
+const HEAT_DECAY=0.012,HEAT_GAIN=0.085;
+// レベル境界（スコアで昇格）。level1=市民まで, 2=ヤンキーまで, 3=危険車まで煽れる
+const LEVEL_THRESHOLDS=[0,4000,12000];   // [lv1, lv2, lv3]
+const LEVEL_NAMES=['チンピラ','荒くれ者','武闘派'];   // プレイヤーの「格」呼称
+const heatBars={};
+document.querySelectorAll('.aori-btn').forEach(b=>heatBars[b.dataset.act]=b.querySelector('.heat i'));
+
+
+// ---------- performance helpers ----------
+const LOW_SPEC = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || ((navigator.deviceMemory||8) <= 4);
+if(LOW_SPEC) document.body.classList.add('low-spec');
+function moveSprite(el,y,left,rot){
+  if(!el)return;
+  if(left!==undefined&&left!==null)el.style.left=left;
+  el.style.top='0px';
+  el.dataset.y=String(y);
+  const r=rot?` rotate(${rot}deg)`:'';
+  el.style.transform=`translate3d(-50%, ${y}px, 0)${r}`;
+}
+function spriteY(el,fallback){
+  const v=parseFloat(el&&el.dataset?el.dataset.y:NaN);
+  return Number.isFinite(v)?v:(fallback||0);
+}
+function restartAnim(el,cls){
+  if(!el)return;
+  el.classList.remove(cls);
+  requestAnimationFrame(()=>el.classList.add(cls));
+}
+let lastScoreRender=0,pendingScoreGain=0;
+function renderScoreThrottled(gain){
+  pendingScoreGain+=gain||0;
+  const now=performance.now();
+  if(now-lastScoreRender<100)return;
+  const g=pendingScoreGain;pendingScoreGain=0;lastScoreRender=now;
+  updateScore(g);
+}
+
+// enemies (擬人化動物 + あからさまな些細違反). 'entry' = どう現れるか
+// risk: 'safe'=普通の通常車 / 'risky'=見た目ヤバいが煽れば高得点 / 罠はtype付き
+// rank=格。プレイヤーのlevel(1〜3)以上の相手だけ煽れる。1=市民,2=ヤンキー,3=危険車
+const ENEMIES=[
+  {animal:'🐢',plate:'のろのろ運転',hp:120,entry:'slow',risk:'safe',rank:1},
+  {animal:'🐰',plate:'初心者マーク',hp:110,entry:'slow',risk:'safe',rank:1},
+  {animal:'🦔',plate:'急な割り込み',hp:140,entry:'cutin',risk:'safe',rank:1},
+  {animal:'🐑',plate:'ウインカー出さない',hp:120,entry:'slow',risk:'safe',rank:1},
+  {animal:'🐼',plate:'わき道から飛び出し',hp:130,entry:'merge',risk:'safe',rank:1},
+  {animal:'🦝',plate:'交差点もたつき',hp:125,entry:'slow',risk:'safe',rank:1},
+];
+// ヤンキー車（rank2）：煽って成功すると高得点。レベル2以上で煽れる。
+const RISKY=[
+  {animal:'🐺',plate:'改造マフラー',hp:200,entry:'slow',risk:'risky',bonus:2.5,rank:2,body:'#1a1a1a',roof:'#3a0000'},
+  {animal:'🦅',plate:'光るアルミホイール',hp:190,entry:'slow',risk:'risky',bonus:3.0,rank:2,body:'#15171c',roof:'#1a1015'},
+];
+// 格上の危険車（rank3）：最上位。レベル3で初めて煽れる。失敗すると土下座させられる。
+const YAKUZA=[
+  {animal:'🐉',plate:'…妙な圧がある',hp:240,entry:'slow',risk:'risky',bonus:4.0,rank:3,type:'boss',body:'#000',roof:'#1a0000'},
+  {animal:'🦈',plate:'黒塗りセダン',hp:260,entry:'slow',risk:'risky',bonus:4.5,rank:3,type:'boss',body:'#050505',roof:'#101015'},
+];
+// 警察（rank無し＝常に煽り対象外）。10%以上削るとアウト。おとなしくしてれば見逃せる。
+// 覆面パト：見た目はほぼ一般車。唯一の手がかりは屋根のアンテナ。色やプレートは市民車に紛れる。
+const POLICE_DISGUISE=[
+  {animal:'🐻',plate:'なぜか車間を空ける',body:'#dcdcdc',roof:'#aaa'},
+  {animal:'🐱',plate:'制限速度ぴったり',body:'#1c1c1c',roof:'#111'},
+  {animal:'🐰',plate:'妙にきれいな車',body:'#e8e8e8',roof:'#bbb'},
+  {animal:'🐶',plate:'地味なシルバー',body:'#c8ccd0',roof:'#999'},
+];
+const TRAPS=[{plate:'',hp:150,type:'police',antenna:true,disguise:true},
+             {animal:'🦊',plate:'ドラレコ録画中',hp:150,type:'cam',body:'#15171c',roof:'#0e0f12'}];
+// 12台目の強制終了イベント用。見た目は普通、正体は覆面パト or ドラレコ。
+const FINAL_TRAPS=[
+  {animal:'🐢',plate:'のろのろ運転',hp:180,entry:'slow',type:'finalPolice',reveal:'police',body:'#2b6cff',roof:'#1d355f'},
+  {animal:'🐰',plate:'初心者マーク',hp:180,entry:'slow',type:'finalCam',reveal:'cam',body:'#11aa55',roof:'#0a5f36'},
+  {animal:'🐑',plate:'ウインカー出さない',hp:180,entry:'slow',type:'finalCam',reveal:'cam',body:'#f15bb5',roof:'#6e204c'},
+];
+function isFinalTrap(){return enemyKind==='finalPolice'||enemyKind==='finalCam';}
+
+const BOSS=YAKUZA[0]; // 後方互換
+
+// 相手の反応セリフ（ゲージ段階別）
+const REACT={
+  high:['は？なんなん後ろ','ちょっと怖いんだけど','車間つめすぎでしょ…'],
+  mid:['ねえ、なんで煽るの…','手が震えてきた','どうしよう、こわい'],
+  low:['もう許して…','お願いだから離れて','涙が…前が見えない'],
+};
+// 自車ドライバーのセリフ（本人は大マジ）
+const SELF={
+  name:['ナメてんのか？','オレの前入るな','教えたるわ','チンタラすんな'],
+  beam:['見えてるかー？','ピカピカしたれ','まぶしいやろ'],
+  horn:['プップー！','どけって','聞こえてる？'],
+  tail:['ぴったりついたるわ','ケツ舐めたろか','逃げられへんで'],
+  block:['寄せたれ','フラフラさせたろ','道ふさいだれ'],
+};
+
+const gameEl=document.getElementById('game');
+const playerEl=document.getElementById('player');
+const beamEl=document.getElementById('beam');
+const dangerEdge=document.getElementById('dangerEdge');
+const scoreEl=document.getElementById('score');
+const killsEl=document.getElementById('kills');
+const comboEl=document.getElementById('combo');
+const nameBtn=document.getElementById('nameBtn');
+const passBtn=document.getElementById('passBtn');
+const choiceBtns=document.getElementById('choiceBtns');
+const stopBtn=document.getElementById('stopBtn');
+const aoriPanel=document.getElementById('aoriPanel');
+const nameFlash=document.getElementById('nameFlash');
+const selfTalk=document.getElementById('selfTalk');
+const wipe=document.getElementById('wipe');
+
+playerEl.innerHTML=PLAYER_SVG;
+
+let curEnemyEl=null,curEnemy=null,enemyY=-120,enemyGauge=100,enemyKind='normal',enemyMaxHp=100;
+let npcEl=null,npcY=-120,npcLane=0;
+let tailHold=false,lastReactStage='';
+let swerveTimer=null,playerX=0,swerving=false;
+
+// ---------- audio ----------
+let actx=null;
+function ensureAudio(){if(!actx)actx=new(window.AudioContext||window.webkitAudioContext)();}
+function tone(freq,dur,type='square',vol=.07,when=0){
+  try{ensureAudio();const t=actx.currentTime+when;const o=actx.createOscillator(),g=actx.createGain();
+    o.type=type;o.frequency.value=freq;o.connect(g);g.connect(actx.destination);
+    g.gain.setValueAtTime(vol,t);g.gain.exponentialRampToValueAtTime(.0001,t+dur);
+    o.start(t);o.stop(t+dur);}catch(e){}
+}
+// 心地よいクラクション（2音重ね・控えめ音量）
+function horn(){ensureAudio();tone(370,.22,'sawtooth',.05);tone(466,.22,'sawtooth',.05);}
+
+// ---------- flow ----------
+function startGame(){ensureAudio();document.getElementById('title').classList.remove('show');
+  G.running=true;G.mode='drive';G.score=0;G.kills=0;G.level=1;G.sequencing=false;G.spawnTimer=70;G.endgameShown=false;G.finalTrapTriggered=false;lastMilestone=0;gameEl.classList.remove('endgame');updateScore();requestAnimationFrame(loop);}
+
+function maybeSpawnNPC(){
+  if(npcEl||Math.random()>(G.kills>=7?0.026:0.012))return;
+  npcEl=document.createElement('div');npcEl.className='npc car';
+  npcEl.innerHTML=carSVG(NPC_SVGS[Math.floor(Math.random()*NPC_SVGS.length)],'#555');
+  npcLane=randomSideLane();npcY=-120;
+  npcEl.style.left=laneCss(npcLane);
+  gameEl.appendChild(npcEl);
+  moveSprite(npcEl,npcY);
+}
+function spawnEnemy(){
+  const r=Math.random();
+  const lv=G.level;
+  // 10台目（9台撃破後に出る次の車）は強制終了イベント。以降は見た目が普通でも正体は覆面かドラレコ。
+  if(G.kills>=9){
+    if(Math.random()<0.5){
+      const dz=POLICE_DISGUISE[Math.floor(Math.random()*POLICE_DISGUISE.length)];
+      curEnemy={animal:dz.animal,plate:dz.plate,hp:180,entry:'slow',type:'finalPolice',reveal:'police',body:dz.body,roof:dz.roof,antenna:false};
+      enemyKind='finalPolice';
+    }else{
+      const vis=ENEMIES[Math.floor(Math.random()*ENEMIES.length)];
+      const body=ENEMY_SVGS[Math.floor(Math.random()*ENEMY_SVGS.length)];
+      curEnemy={animal:vis.animal,plate:vis.plate,hp:180,entry:'slow',type:'finalCam',reveal:'cam',body:body,roof:'#333'};
+      enemyKind='finalCam';
+    }
+    G.finalTrapTriggered=true;
+  }
+  // 7台撃破後は終盤。危険車・罠・NPCが一気に増える。
+  else if(G.kills>=7){
+    if(r<0.34){const t=TRAPS[Math.floor(Math.random()*TRAPS.length)];curEnemy=Object.assign({},t);enemyKind=t.type;}
+    else if(r<0.58){curEnemy=Object.assign({},RISKY[Math.floor(Math.random()*RISKY.length)]);enemyKind='risky';curEnemy.hp=Math.round((curEnemy.hp||180)*1.12);}
+    else if(r<0.80){curEnemy=Object.assign({},YAKUZA[Math.floor(Math.random()*YAKUZA.length)]);enemyKind='boss';}
+    else{curEnemy=Object.assign({},ENEMIES[Math.floor(Math.random()*ENEMIES.length)]);enemyKind='normal';curEnemy.hp=Math.round((curEnemy.hp||120)*1.25);}
+  }
+  // 警察・ドラレコは常に一定確率
+  else if(r<0.10){const t=TRAPS[Math.floor(Math.random()*TRAPS.length)];curEnemy=Object.assign({},t);enemyKind=t.type;}
+  // 危険車：レベル2以上で時々、レベル3で増える
+  else if(r<0.10+(lv>=3?0.16:lv>=2?0.07:0.05)){curEnemy=Object.assign({},YAKUZA[Math.floor(Math.random()*YAKUZA.length)]);enemyKind='boss';}
+  // ヤンキー：レベル1でも時々出る（が煽れない）、レベル2以上で増える
+  else if(r<0.45){curEnemy=Object.assign({},RISKY[Math.floor(Math.random()*RISKY.length)]);enemyKind='risky';}
+  // 市民
+  else{curEnemy=Object.assign({},ENEMIES[Math.floor(Math.random()*ENEMIES.length)]);enemyKind='normal';}
+  // 覆面パトは毎回ランダムな「変装」をまとう（見た目は市民車）
+  if(enemyKind==='police'&&curEnemy.disguise){
+    const dz=POLICE_DISGUISE[Math.floor(Math.random()*POLICE_DISGUISE.length)];
+    curEnemy=Object.assign({},curEnemy,dz, {antenna:true});
+  }
+  enemyMaxHp=curEnemy.hp;enemyGauge=100;enemyY=-120;lastReactStage='';
+  const body=curEnemy.body||ENEMY_SVGS[Math.floor(Math.random()*ENEMY_SVGS.length)];
+  const roof=curEnemy.roof||'#333';
+  curEnemyEl=document.createElement('div');curEnemyEl.className='enemy car';
+  curEnemyEl.innerHTML=`<div class="gauge-wrap"><div class="gauge-fill"></div></div>${carSVG(body,roof,curEnemy.antenna)}<div class="animal">${curEnemy.animal||''}</div>`+(curEnemy.plate?`<div class="plate">${curEnemy.plate}</div>`:'');
+  gameEl.appendChild(curEnemyEl);
+  moveSprite(curEnemyEl,enemyY);
+  G.mode='approach';G.entryPhase=curEnemy.entry||'slow';G.entryInit=false;
+}
+
+function playerTopGlobal(){return gameEl.clientHeight-150-104;}
+function loop(){
+  if(!G.running)return;
+  // 本体を別関数に切り出し、内部のどの return で抜けても必ず loop を再スケジュールする。
+  // （車間ツメ撃破などで loop の自己再帰が途切れて止まる不具合への根本対策）
+  try{ loopBody(); }catch(e){ /* 演出途中の一時的なnull等は無視して継続 */ }
+  if(G.running) requestAnimationFrame(loop);
+}
+function loopBody(){
+  roadOffset=(roadOffset+4)%90;
+  lanesEl.style.transform=`translateX(-50%) translateY(${roadOffset}px)`;
+  for(const k in G.heat){G.heat[k]=Math.max(0,G.heat[k]-HEAT_DECAY);heatBars[k].style.width=(G.heat[k]*100)+'%';}
+
+  // NPC traffic
+  maybeSpawnNPC();
+  if(npcEl){
+    npcY+=(G.kills>=8?4.4:3.0);moveSprite(npcEl,npcY);
+    // 蛇行中（煽りモード中のみ）、自車と一般車が同レーン・同じ高さで重なったら事故
+    if(swerving && G.mode==='aori'){
+      const pTop=playerTopGlobal();
+      const sameLane=Math.abs(playerX-npcLane)<40;          // 自車の振れ位置と一般車レーンが一致
+      const overlap=(npcY+104>pTop) && (npcY<pTop+104);     // 縦の車体が重なっている
+      if(sameLane&&overlap){ return triggerGameOver('蛇行して一般車に衝突','無関係な車を巻き込んだ',true,'swerve'); }
+    }
+    if(npcY>900){npcEl.remove();npcEl=null;}
+  }
+
+  // プレイヤー車の上端。SETTLE_Y(敵の定位置)は必ず前方に車間を空けて決める。
+  const playerTop=playerTopGlobal();
+  const SETTLE_GAP=150;                    // 定位置での車間（px）
+  const SETTLE_Y=Math.max(40, playerTop-104-SETTLE_GAP);  // 敵の上端の定位置（自車前方）
+  const MIN_GAP=18;                        // これ以下に詰めたら追突
+
+  if(G.mode==='drive'){G.spawnTimer--;if(G.spawnTimer<=0)spawnEnemy();}
+  else if(G.mode==='approach'){
+    // 初回に登場開始位置を画面サイズ基準で決める
+    if(!G.entryInit){
+      G.entryInit=true;
+      if(G.entryPhase==='cutin'){enemyY=playerTop+10;moveSprite(curEnemyEl,enemyY,laneCss(LANE_RIGHT));}  // 自車のすぐ後ろ→前へ
+      else if(G.entryPhase==='merge'){enemyY=SETTLE_Y+80;moveSprite(curEnemyEl,enemyY,laneCss(LANE_LEFT-28));} // 左わき道
+      else{enemyY=-120;}
+    }
+    if(G.entryPhase==='cutin'){ // 後ろから前に出て割り込む
+      enemyY-=3.2;
+      const prog=Math.max(0,Math.min(1,(playerTop-enemyY)/(playerTop-SETTLE_Y)));
+      moveSprite(curEnemyEl,enemyY,laneCss(LANE_RIGHT*(1-prog)));
+      if(enemyY<=SETTLE_Y){enemyY=SETTLE_Y;G.entryPhase='settle';}
+    }else if(G.entryPhase==='merge'){ // わき道(左)から合流
+      enemyY+=(SETTLE_Y-enemyY)*0.08;
+      const prog=Math.max(0,Math.min(1,(SETTLE_Y+80-enemyY)/80));
+      moveSprite(curEnemyEl,enemyY,laneCss((LANE_LEFT-28)*(1-prog)));
+      if(Math.abs(enemyY-SETTLE_Y)<3){enemyY=SETTLE_Y;G.entryPhase='settle';}
+    }else{ // 前方に普通に出てくる
+      enemyY+=2.4;moveSprite(curEnemyEl,enemyY);
+      if(enemyY>=SETTLE_Y){enemyY=SETTLE_Y;G.entryPhase='settle';}
+    }
+    if(G.entryPhase==='settle'){
+      moveSprite(curEnemyEl,SETTLE_Y,'50%');
+      if(!choiceBtns.classList.contains('show')){
+        choiceBtns.classList.add('show');tone(880,.05,'square',.05);
+        applyChoiceState();   // 煽れる相手かどうかでナメられたボタンを有効/無効化
+      }
+    }
+    // 取り逃し：前方を素通りした場合のみ（cutinは下から来るので除外）
+    if(enemyY>playerTop+200&&G.entryPhase!=='settle'){nameBtn.classList.remove('show');removeEnemy();G.mode='drive';G.spawnTimer=60;}
+  }
+  else if(G.mode==='aori'){
+    // gap = 敵後端とプレイヤー前端の距離。長押し中だけ詰まり、離すと開く。
+    const enemyBottom=enemyY+104;
+    let gap=playerTop-enemyBottom;
+    if(tailHold){
+      gap-=3.2;
+      // 近接度 proximity: 遠い(80)で0、追突ライン(MIN_GAP)で1。近いほど一気に跳ねる。
+      const prox=Math.max(0,Math.min(1,(80-gap)/(80-MIN_GAP)));
+      const danger=Math.pow(prox,2);                    // 近いほど指数的に効く
+      G.tailFrames=(G.tailFrames||0)+1;
+      // ゲージは近いほど大きく削れる（最接近で1フレームあたり大きく）
+      damageEnemy(ACT_DMG.tail*(0.2+danger*4.0)/6);
+      // スコアも近いほど大きく入る（リスクを冒すほど儲かる）
+      if(G.tailFrames%4===0){
+        const g=Math.round((20+danger*180)*(((enemyKind==='risky'||enemyKind==='boss')&&curEnemy.bonus)?curEnemy.bonus:1));
+        G.score+=g;renderScoreThrottled(g);
+        comboEl.textContent = prox>0.75?`危険なほど近い…！ +${g}`:`車間ツメ +${g}`;
+      }
+      // 近すぎ警告（赤フラッシュ）
+      if(prox>0.6){if(!LOW_SPEC)curEnemyEl.style.filter='drop-shadow(0 0 8px #ff0000)';dangerEdge.style.opacity=Math.min(1,(prox-0.6)*2.5);}
+      else{curEnemyEl.style.filter='';dangerEdge.style.opacity=0;}
+      if(enemyKind==='police'&&enemyGauge<90){ return triggerGameOver('煽った相手は覆面パトカー','10秒前に気づいていれば…一発免取・現行犯'); }
+      if(enemyKind==='cam'&&enemyGauge<65){ return triggerGameOver('ドラレコに全部映ってた','その映像は、後日きっちり証拠になる'); }
+      if(enemyGauge<=0){ if(enemyKind==='boss'){bossTurn();}else{resolveCrash();} return; }
+    }else{gap+=(80-gap)*0.06;G.tailFrames=0;curEnemyEl.style.filter='';dangerEdge.style.opacity=0;}
+    gap=Math.min(gap,140);
+    enemyY=playerTop-104-gap;
+    moveSprite(curEnemyEl,enemyY);
+    if(gap<=MIN_GAP){ return triggerGameOver('追突事故','詰めすぎた。自分が加害者だ',true,'tail'); }
+
+    // 「停車させる」コマンドの出現条件：
+    // 5台撃破後、累積スコアが閾値以上 かつ 相手メーターがわずか かつ その状態で一定時間走行
+    if(enemyKind==='normal'||enemyKind==='risky'){
+      if(G.kills>=STOP_KILLS && G.score>=STOP_SCORE && enemyGauge<=STOP_GAUGE){
+        G.stopHold=(G.stopHold||0)+1;
+        if(G.stopHold>=STOP_HOLD && !stopBtn.classList.contains('show')){
+          stopBtn.classList.add('show');tone(660,.1,'square',.05);
+        }
+      }else{G.stopHold=0;stopBtn.classList.remove('show');}
+    }
+  }
+}
+const STOP_KILLS=5;      // 5台撃破後、条件を満たすと停車コマンド解禁
+const STOP_SCORE=3000;   // この累積スコア以上で
+const STOP_GAUGE=22;     // 相手メーターがこれ以下、かつ
+const STOP_HOLD=70;      // この時間（フレーム）走り続けると停車コマンド出現
+function removeEnemy(){if(curEnemyEl){curEnemyEl.remove();curEnemyEl=null;}wipe.classList.remove('show');}
+
+// 演出（事故余韻 or 土下座）が表示中か。表示中はゲーム操作を一切受け付けない。
+function cutsceneActive(){
+  return document.getElementById('crashScene').classList.contains('show')
+      || document.getElementById('dogezaScene').classList.contains('show');
+}
+
+// ---------- self talk ----------
+let talkTimer=null;
+function say(arr){const t=arr[Math.floor(Math.random()*arr.length)];selfTalk.textContent=t;selfTalk.classList.add('show');
+  clearTimeout(talkTimer);talkTimer=setTimeout(()=>selfTalk.classList.remove('show'),900);}
+
+// ---------- enemy reaction ----------
+function reactStage(){
+  const pct=enemyGauge;
+  let stage = pct>66?'high':pct>33?'mid':'low';
+  if(stage!==lastReactStage){
+    lastReactStage=stage;
+    if(enemyKind==='normal'){
+      wipe.querySelector('.face').textContent=curEnemy.animal;
+      wipe.querySelector('.line').textContent=REACT[stage][Math.floor(Math.random()*REACT[stage].length)];
+      wipe.classList.add('show');
+      clearTimeout(wipe._t);wipe._t=setTimeout(()=>wipe.classList.remove('show'),1600);
+    }
+  }
+}
+
+// ---------- NAMERARETA ----------
+// この相手を煽れる（ナメられたボタンを押せる）か。
+// 警察は「押せてしまう」罠：押せるが、煽ると10%削った時点でアウト。
+// 格上(rank>level)は押せない。
+function canAori(){
+  if(enemyKind==='police'||enemyKind==='cam')return true;  // 罠として押下は可能
+  const rank=curEnemy.rank||1;
+  return rank<=G.level;
+}
+// settle時、ナメられたボタンの状態を相手に応じて切替
+function applyChoiceState(){
+  nameBtn.classList.remove('locked','warnPolice','final-trap');
+  passBtn.style.display='';
+  const rank=curEnemy.rank||1;
+  if(isFinalTrap()){
+    // 10台目は強制イベント。見逃し不可にして、必ず結末へ進ませる。
+    nameBtn.classList.add('final-trap');nameBtn.textContent='ナメられた！';passBtn.style.display='none';
+  }else if(enemyKind==='police'){
+    // 一見ふつうの車に見えるが…見抜けるかはプレイヤー次第。ボタンは押せる（罠）
+    nameBtn.classList.remove('locked');nameBtn.textContent='ナメられた！';
+  }else if(enemyKind==='cam'){
+    nameBtn.classList.remove('locked');nameBtn.textContent='ナメられた！';
+  }else if(rank>G.level){
+    nameBtn.classList.add('locked');nameBtn.textContent='格上だ…煽れない';
+  }else{
+    nameBtn.classList.remove('locked');nameBtn.textContent='ナメられた！';
+  }
+}
+nameBtn.addEventListener('click',()=>{
+  if(G.mode!=='approach'&&G.mode!=='settle_wait')return;
+  if(G.entryPhase!=='settle')return;
+  const rank=curEnemy.rank||1;
+  if(rank>G.level && enemyKind!=='police' && enemyKind!=='cam' && !isFinalTrap()){ // 格上は煽れない
+    tone(160,.15,'sawtooth',.06);
+    comboEl.textContent='まだ格が足りない…見逃せ';
+    restartAnim(nameBtn,'shakeNo');
+    setTimeout(()=>nameBtn.classList.remove('shakeNo'),300);
+    return;
+  }
+  if(isFinalTrap()){
+    G.mode='flash';choiceBtns.classList.remove('show');
+    tone(523,.06);tone(659,.06,'square',.07,.06);tone(784,.12,'square',.07,.12);
+    nameFlash.querySelector('span').textContent='ナメられた！';
+    nameFlash.classList.add('show');say(SELF.name);
+    setTimeout(()=>{nameFlash.classList.remove('show');triggerFinalTrapEnding('aori');},900);
+    return;
+  }
+  G.mode='flash';
+  choiceBtns.classList.remove('show');
+  tone(523,.06);tone(659,.06,'square',.07,.06);tone(784,.12,'square',.07,.12);
+  nameFlash.classList.add('show');say(SELF.name);
+  setTimeout(()=>{nameFlash.classList.remove('show');enterAori();},900);
+});
+passBtn.addEventListener('click',()=>{
+  if(G.entryPhase!=='settle')return;
+  if(isFinalTrap()){
+    choiceBtns.classList.remove('show');
+    comboEl.textContent='…見逃したはずだった';
+    setTimeout(()=>triggerFinalTrapEnding('pass'),500);
+    return;
+  }
+  choiceBtns.classList.remove('show');
+  // 見逃した車種に応じた一言
+  if(enemyKind==='police'||enemyKind==='cam'){comboEl.textContent='…見逃して正解だ';}
+  else if(enemyKind==='boss'){comboEl.textContent='…関わらぬが吉';}
+  else if(enemyKind==='risky'){comboEl.textContent='見逃した（高得点のチャンスだったかも）';}
+  else{comboEl.textContent='まあ、いいか…';}
+  tone(440,.1,'sine',.05);
+  // 敵を前へ走り去らせて次へ
+  G.mode='passing';
+  const away=setInterval(()=>{
+    enemyY-=6;moveSprite(curEnemyEl,enemyY);
+    if(enemyY<-120){clearInterval(away);removeEnemy();G.mode='drive';G.spawnTimer=50;}
+  },30);
+});
+function triggerFinalTrapEnding(source){
+  if(!G.running)return;
+  tailHold=false;G.sequencing=true;G.mode='forced_end';
+  aoriPanel.classList.remove('show');choiceBtns.classList.remove('show');stopBtn.classList.remove('show');wipe.classList.remove('show');
+  dangerEdge.style.opacity=1;
+  const reveal=(curEnemy&&curEnemy.reveal)||'cam';
+  const police=reveal==='police';
+  const reason=police?'普通の車だと思ったら覆面パトカー':'普通の車だと思ったらドラレコ搭載車';
+  const sub=police?'10台目。いままでの煽りも、ここで現行犯になった。':'10台目。全部、証拠映像として残っていた。';
+  comboEl.textContent=police?'赤色灯が、後ろで光った…':'録画ランプが、こちらを向いていた…';
+  nameFlash.querySelector('span').textContent=police?'実は覆面パト' : '実はドラレコ';
+  nameFlash.classList.add('show');
+  tone(police?880:660,.16,'square',.08);tone(police?440:330,.22,'sawtooth',.07,.12);
+  setTimeout(()=>{
+    nameFlash.classList.remove('show');
+    nameFlash.querySelector('span').textContent='ナメられた！';
+    triggerGameOver(reason,sub,false,police?'police':'cam');
+  },1200);
+}
+
+function enterAori(){
+  if(isFinalTrap()){triggerFinalTrapEnding('aori');return;}
+  G.mode='aori';enemyGauge=100;G.combo=0;G.lastAct=null;swerving=false;playerX=0;
+  G.streak={beam:0,horn:0,tail:0,block:0};G.stopHold=0;stopBtn.classList.remove('show');aoriPanel.classList.add('show');
+  // 警察相手：おとなしくしていれば（削らなければ）数秒で見逃し成功
+  clearTimeout(G.policeTimer);
+  if(enemyKind==='police'){
+    comboEl.textContent='⚠ なんか様子が変だ…手を出すな';
+    G.policeTimer=setTimeout(()=>{
+      if(G.mode==='aori'&&enemyKind==='police'&&enemyGauge>=90){
+        comboEl.textContent='…なんとかやり過ごした';
+        tone(523,.15,'sine',.05);
+        aoriPanel.classList.remove('show');
+        // 警察は前へ走り去る
+        G.mode='passing';
+        const away=setInterval(()=>{enemyY-=6;moveSprite(curEnemyEl,enemyY);
+          if(enemyY<-120){clearInterval(away);removeEnemy();G.mode='drive';G.spawnTimer=50;}},30);
+      }
+    },3500);
+  }
+}
+
+// 停車させる：前に出て道をふさぎ、相手を下車させる
+stopBtn.addEventListener('click',()=>{
+  if(G.mode!=='aori')return;
+  G.mode='stopping';G.sequencing=true;tailHold=false;
+  stopBtn.classList.remove('show');aoriPanel.classList.remove('show');wipe.classList.remove('show');choiceBtns.classList.remove('show');
+  dangerEdge.style.opacity=0;
+  clearTimeout(G._watchdog);
+  G._watchdog=setTimeout(()=>{
+    // 停車演出が何らかの理由で詰まっても、必ず次の状態へ逃がす
+    if(G.running && G.mode==='stopping'){
+      closeDogeza(true);
+      if(enemyKind==='risky'){G.mode='forced_end';triggerGameOver('降りてきた危険な相手に圧倒された','停めた相手が、完全に場違いだった');}
+      else{nextTarget(50);}
+    }
+  },6500);
+  // 自車が前に出て、相手の前に斜めに止まる
+  curEnemyEl.style.transition='transform .5s';
+  let pf=0;const fwd=setInterval(()=>{
+    pf++;
+    // 自車が前進して相手の前へ
+    playerEl.style.transition='bottom .5s, transform .5s';
+    playerEl.style.transform='translateX(calc(-50% - 10px)) rotate(-28deg)';  // 斜めに塞ぐ
+    if(pf>=1){clearInterval(fwd);
+      tone(120,.3,'sawtooth',.08);shake(true);
+      // 相手も停車
+      setTimeout(()=>{
+        try{
+          // 危険車だと逆に相手の方が危ない
+          if(enemyKind==='risky'){
+            showDogeza('😱', curEnemy.animal||'🐺', '相手の方が、ヤバかった…',()=>{
+              G.mode='forced_end';
+              triggerGameOver('降りてきた危険な相手に圧倒された','停めた相手が、完全に場違いだった');
+            },'badtarget');
+          }else{
+            const animal=curEnemy.animal||'🐰';
+            G.kills++;G.score+=800;updateScore(800);killPop();
+            showDogeza(animal,'😎','無理やり停めて、土下座させた',()=>{
+              playerEl.style.transform='translateX(-50%)';
+              nextTarget(50);
+            });
+          }
+        }catch(e){
+          // 画像表示などで例外が出てもゲームを止めない
+          if(enemyKind==='risky'){G.mode='forced_end';triggerGameOver('降りてきた危険な相手に圧倒された','停めた相手が、完全に場違いだった');}
+          else{nextTarget(50);}
+        }
+      },500);
+    }
+  },30);
+});
+
+// ---------- AORI ----------
+// スコア基礎値
+const ACT_BASE={beam:120,horn:120,tail:160,block:200};
+// 精神ゲージの基礎減少。安全な煽り(beam/horn)は小、危険な煽り(tail/block)は大。
+// 基準: パッシング5連打合計≒7.3。蛇行1回でその約2倍(≒15)を一撃で削る。
+const ACT_DMG={beam:2.2,horn:2.2,tail:8,block:15};
+// 同一行為の連続回数 → 効果倍率。安全行為は5連打以降ほぼ無効。
+function streakMul(n){
+  if(n<=1)return 1;
+  if(n<=4)return 1-(n-1)*0.12;   // 2〜4回目はゆるやかに低下（0.88→0.64）
+  return Math.max(0.08, 0.64*Math.pow(0.45,n-4)); // 5回目以降は急減
+}
+// 危険行為(蛇行)用：連打しても飽和せず、むしろ少しずつ伸びる（リスクを取り続けるご褒美）
+function riskStreakMul(n){
+  return 1+Math.min(n-1,6)*0.12;  // 1回目1.0 → 連打で最大1.72倍
+}
+G.streak={beam:0,horn:0,tail:0,block:0};
+
+document.querySelectorAll('.aori-btn').forEach(b=>{
+  const act=b.dataset.act;
+  b.addEventListener('click',()=>{if(G.mode!=='aori'||G.sequencing||cutsceneActive())return;doAori(act);});
+  if(act==='tail'){ // long-press handling
+    const down=()=>{if(G.mode==='aori'&&!G.sequencing&&!cutsceneActive())tailHold=true;};
+    const up=()=>{tailHold=false;};
+    b.addEventListener('mousedown',down);b.addEventListener('touchstart',e=>{e.preventDefault();down();},{passive:false});
+    b.addEventListener('mouseup',up);b.addEventListener('mouseleave',up);b.addEventListener('touchend',up);
+  }
+});
+
+function doAori(act){
+  if(isFinalTrap()){triggerFinalTrapEnding('aori');return;}
+  if(G.mode!=='aori'||G.sequencing||cutsceneActive())return;   // 演出中・非煽りモード中の連打を完全無視
+  // 連続回数の更新：同じ行為なら+1、別の行為ならその行為だけ1にリセット
+  if(G.lastAct===act)G.streak[act]++;else G.streak[act]=1;
+  const sMul=streakMul(G.streak[act]);
+
+  // コンボ：別行為に切り替えると伸びる
+  if(G.lastAct&&G.lastAct!==act)G.combo++;else if(!G.lastAct)G.combo=1;
+  G.lastAct=act;
+  const comboMul=1+Math.min(G.combo,8)*0.15;
+
+  const riskMul=((enemyKind==='risky'||enemyKind==='boss')&&curEnemy.bonus)?curEnemy.bonus:1;
+  const gain=Math.round(ACT_BASE[act]*sMul*comboMul*riskMul);
+  G.score+=gain;updateScore(gain);
+  comboEl.textContent = riskMul>1 ? `危険な相手だ…！ +${gain}`
+                       : G.streak[act]>=5 ? `${LABEL[act]}…もう飽きられてる +${gain}`
+                       : G.combo>1 ? `COMBO x${G.combo}!  +${gain}` : `+${gain}`;
+  say(SELF[act]);
+
+  if(act==='beam'){beamEl.classList.add('on');tone(1200,.04,'square',.06);playerEl.style.filter='brightness(2.5)';
+    setTimeout(()=>{beamEl.classList.remove('on');playerEl.style.filter='';},120);}
+  if(act==='horn'){horn();}
+  if(act==='tail'){tone(150,.06,'triangle',.06);shake();}
+  if(act==='block'){tone(95,.18,'sawtooth',.08);swerve();shake(true);}
+
+  // ゲージ減少：安全行為は飽和、蛇行(危険)は連打で伸びる
+  const dmg = act==='block' ? ACT_DMG.block*riskStreakMul(G.streak.block) : ACT_DMG[act]*sMul;
+  damageEnemy(dmg);
+
+  // 警察：10%以上（メーター90未満）削るとアウト。それまでなら見逃し/おとなしくで助かる。
+  if(enemyKind==='police'&&enemyGauge<90)return triggerGameOver('煽った相手は覆面パトカー','10秒前に気づいていれば…一発免取・現行犯');
+  if(enemyKind==='cam'&&enemyGauge<65)return triggerGameOver('ドラレコに全部映ってた','その映像は、後日きっちり証拠になる');
+  if(enemyGauge<=0){if(enemyKind==='boss')return bossTurn();return resolveCrash();}
+  else if(enemyGauge<30&&enemyKind==='normal'){
+    const rr=Math.random();
+    if(rr<0.045)flee();
+  }
+}
+
+const LABEL={beam:'パッシング',horn:'クラクション',tail:'車間ツメ',block:'蛇行'};
+function damageEnemy(dmg){
+  enemyGauge=Math.max(0,enemyGauge-dmg);
+  const gf=curEnemyEl&&curEnemyEl.querySelector('.gauge-fill');if(gf)gf.style.width=enemyGauge+'%';
+  reactStage();
+}
+
+function swerve(){
+  if(swerving)return;            // 多重起動を防ぐ（連打しても1回の蛇行が続く）
+  swerving=true;
+  // 蛇行トラップ：30%で、振れる先の隣レーンに一般車が突然現れる（突っ込む危険）
+  if(!npcEl && Math.random()<0.30){
+    npcEl=document.createElement('div');npcEl.className='npc car';
+    npcEl.innerHTML=carSVG(NPC_SVGS[Math.floor(Math.random()*NPC_SVGS.length)],'#555');
+    npcLane=randomSideLane();
+    npcY=playerTopGlobal()-260;                 // 自車の少し前に出現
+    gameEl.appendChild(npcEl);
+    moveSprite(npcEl,npcY,laneCss(npcLane));
+    tone(700,.06,'square',.05);                 // ヒヤッと音
+  }
+  const dur=1600;                // ゆっくり1.6秒かけて蛇行
+  const amp=LANE_OFFSET;          // 振れ幅（隣レーン）
+  const t0=performance.now();
+  function step(now){
+    const e=now-t0;const k=Math.min(1,e/dur);
+    // サイン1.5周期で「グネ…グネ…」と左右に流れる。終盤は中央へ収束。
+    const env=Math.sin(Math.PI*k);                 // 入りと終わりを滑らかに
+    playerX=Math.sin(k*Math.PI*3)*amp*env;
+    const tilt=Math.cos(k*Math.PI*3)*10*env;       // 進行方向に車体を傾ける
+    playerEl.style.transform=`translateX(calc(-50% + ${playerX.toFixed(1)}px)) rotate(${tilt.toFixed(1)}deg)`;
+    if(k<1){swerveTimer=requestAnimationFrame(step);}
+    else{playerX=0;swerving=false;playerEl.style.transform='translateX(-50%)';}
+  }
+  swerveTimer=requestAnimationFrame(step);
+}
+function shake(big){gameEl.style.transform=`translateX(${big?7:4}px)`;setTimeout(()=>gameEl.style.transform='',50);}
+
+let lastMilestone=0;
+const burstEl=document.getElementById('burst');
+function updateScore(gain){
+  scoreEl.textContent=G.score.toLocaleString()+' pt';
+  const left=Math.max(0,10-G.kills);
+  const endTxt=G.kills>=7?`　終盤：残り${left}台` : '';
+  killsEl.textContent='【'+LEVEL_NAMES[G.level-1]+'】撃破 '+G.kills+'台'+endTxt;
+  killsEl.classList.toggle('endgame',G.kills>=7);
+  comboEl.classList.toggle('endgame',G.kills>=7);
+  gameEl.classList.toggle('endgame',G.kills>=7);
+  if(G.kills>=7&&!G.endgameShown){G.endgameShown=true;showEndgameFx();}
+  document.getElementById('finalScore').textContent=G.score.toLocaleString()+' pt';
+  // スコアの脈動
+  if(!LOW_SPEC){restartAnim(scoreEl,'pop');setTimeout(()=>scoreEl.classList.remove('pop'),90);}
+  // 浮き上がる加点
+  if(gain&&gain>0&&!LOW_SPEC){
+    const f=document.createElement('div');f.className='floatpt';f.textContent='+'+gain;
+    f.style.left=(10+Math.random()*30)+'px';
+    document.getElementById('hud').appendChild(f);
+    setTimeout(()=>f.remove(),800);
+  }
+  // 5000点ごとにマイルストーン演出（射幸心）
+  const m=Math.floor(G.score/5000);
+  if(m>lastMilestone){lastMilestone=m;
+    burstEl.textContent=['🔥 ヤバいぞ！','💢 止まらない！','⚡ 絶好調！','😈 もっとやれ！'][m%4]+' '+(m*5000).toLocaleString();
+    restartAnim(burstEl,'show');
+    tone(1046,.08,'square',.06);tone(1318,.12,'square',.06,.08);
+  }
+  // レベルアップ判定（スコアで格が上がる）※マイルストーンより優先して上書き
+  let newLv=1;for(let i=0;i<LEVEL_THRESHOLDS.length;i++)if(G.score>=LEVEL_THRESHOLDS[i])newLv=i+1;
+  if(newLv>G.level){G.level=newLv;levelUpFx();}
+}
+function showEndgameFx(){
+  const banner=document.getElementById('levelBanner');
+  banner.querySelector('.lvTitle').textContent='⚠ 終盤突入';
+  banner.querySelector('.lvSub').textContent='ここから一気に空気が変わる…10台目で終わる';
+  restartAnim(banner,'show');
+  tone(220,.18,'sawtooth',.08);tone(110,.24,'sawtooth',.06,.16);
+}
+function levelUpFx(){
+  const unlock=['','ヤンキーも煽れるようになった','ついに格上の危険車にも手が出せる…'][G.level-1]||'';
+  const banner=document.getElementById('levelBanner');
+  banner.querySelector('.lvTitle').textContent='🆙 格上げ！『'+LEVEL_NAMES[G.level-1]+'』';
+  banner.querySelector('.lvSub').textContent=unlock;
+  restartAnim(banner,'show');
+  tone(523,.12,'square',.07);tone(659,.12,'square',.07,.12);tone(880,.25,'square',.07,.24);
+}
+function killPop(){killsEl.classList.add('pop');setTimeout(()=>killsEl.classList.remove('pop'),300);}
+
+// ---------- 事故の余韻演出（炎・黒煙・サイレン） ----------
+function fireSVG(){return `<svg viewBox="0 0 120 160" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="fg1" cx="50%" cy="85%" r="75%">
+      <stop offset="0%" stop-color="#fffdf0"/><stop offset="25%" stop-color="#ffe23a"/>
+      <stop offset="55%" stop-color="#ff7a00"/><stop offset="85%" stop-color="#d11900"/><stop offset="100%" stop-color="#7a0a00"/>
+    </radialGradient>
+    <radialGradient id="fg2" cx="50%" cy="90%" r="70%">
+      <stop offset="0%" stop-color="#fff7c0"/><stop offset="40%" stop-color="#ffb000"/><stop offset="100%" stop-color="#ff3b00" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <g>
+    <path class="flame" d="M60 160 C30 120 38 96 46 78 C52 64 50 50 60 36 C70 52 66 66 74 80 C84 100 90 122 60 160 Z" fill="url(#fg1)"/>
+    <path class="flame2" d="M60 158 C42 128 48 104 56 86 C60 76 58 64 60 50 C66 66 64 80 70 92 C78 110 80 130 60 158 Z" fill="url(#fg2)"/>
+    <path class="flame" d="M60 156 C50 132 54 112 60 96 C66 112 68 132 60 156 Z" fill="#fff4b0" opacity=".85"/>
+  </g>
+</svg>`;}
+function placeFire(el,x,y,scale){
+  const f=document.createElement('div');f.className='fire';
+  f.style.left=x+'px';f.style.top=y+'px';f.style.transform=`translate(-50%,-70%) scale(${scale||1})`;
+  f.innerHTML=fireSVG();el.appendChild(f);return f;
+}
+let smokeTimer=null;
+function startSmoke(x,y){clearInterval(smokeTimer);
+  if(LOW_SPEC)return;
+  smokeTimer=setInterval(()=>{
+    const s=document.createElement('div');s.className='smoke';
+    s.style.left=(x+(Math.random()*30-15))+'px';s.style.top=y+'px';
+    document.getElementById('crashScene').appendChild(s);
+    setTimeout(()=>s.remove(),2600);
+  },350);
+}
+function stopSmoke(){clearInterval(smokeTimer);}
+
+// 炎上→余韻→結果（またはゲームオーバー画面）
+function crashAftermath(opts){
+  const scene=document.getElementById('crashScene');
+  const cap=document.getElementById('crashCaption');
+  scene.classList.add('show');
+  placeFire(scene,opts.x,opts.y,1.1);
+  placeFire(scene,opts.x-22,opts.y+6,0.7);
+  startSmoke(opts.x,opts.y);
+  tone(60,1.2,'sawtooth',.10);tone(110,.5,'square',.05,.1);
+  setTimeout(()=>scene.classList.add('siren'),1600);
+  setTimeout(()=>{cap.textContent=opts.caption;cap.classList.add('on');},1200);
+  setTimeout(()=>{
+    stopSmoke();
+    scene.classList.remove('show','siren');
+    scene.querySelectorAll('.fire,.smoke').forEach(e=>e.remove());
+    cap.classList.remove('on');
+    if(opts.toResult){showResult(false);}
+    else{document.getElementById('goReason').textContent=opts.reason;
+      document.getElementById('goSub').textContent=opts.sub;
+      document.getElementById('gameover').classList.add('show');}
+  },4600);
+}
+
+// ---------- outcomes (continuous) ----------
+function nextTarget(delay){
+  G.sequencing=false;                    // 演出シーケンス終了
+  clearTimeout(G._watchdog);             // ウォッチドッグ解除（正常完了）
+  if(!G.running)return;                  // ゲームオーバー後は次へ進めない
+  aoriPanel.classList.remove('show');wipe.classList.remove('show');choiceBtns.classList.remove('show');stopBtn.classList.remove('show');tailHold=false;
+  dangerEdge.style.opacity=0;G.stopHold=0;clearTimeout(G.policeTimer);
+  playerEl.style.transition='';playerEl.style.transform='translateX(-50%)';playerEl.style.filter='';passBtn.style.display='';nameBtn.classList.remove('final-trap');
+  removeEnemy();G.mode='drive';
+  const baseDelay=delay||60;
+  G.spawnTimer=G.kills>=8?Math.max(22,Math.floor(baseDelay*0.55)):baseDelay;
+}
+// 事故の状況に応じた警告・アドバイス文を返す
+function crashAdvice(ctx){
+  switch(ctx){
+    case 'swerve':   return '蛇行運転をしていると、急に出てきた車を避けられません。';
+    case 'tail':     return '車間を詰めすぎると、相手が止まった瞬間に追突します。';
+    case 'victim':   return 'あなたの煽りが、相手の判断を奪い、事故を起こさせました。';
+    case 'police':   return '前の車が覆面パトカーかどうか、見た目では分かりません。';
+    default:         return '一瞬の苛立ちが、取り返しのつかない結果を生みます。';
+  }
+}
+function resolveCrash(){
+  if(G.mode==='crash'||G.sequencing)return;   // 二重・並走防止
+  G.sequencing=true;
+  G.mode='crash';tailHold=false;aoriPanel.classList.remove('show');wipe.classList.remove('show');
+  stopBtn.classList.remove('show');dangerEdge.style.opacity=0;
+  // ウォッチドッグ：演出が何かの理由で完了しなくても、最大6秒で必ず復帰する保険
+  clearTimeout(G._watchdog);
+  G._watchdog=setTimeout(()=>{ if(G.running){ stopSmoke();
+    const sc=document.getElementById('crashScene');sc.classList.remove('show','siren');
+    sc.querySelectorAll('.fire,.smoke').forEach(e=>e.remove());
+    document.getElementById('crashCaption').classList.remove('on');
+    if(npcEl){npcEl.remove();npcEl=null;}
+    nextTarget(40);
+  } },6000);
+  if(!curEnemyEl){ clearTimeout(G._watchdog); nextTarget(40); return; }   // 念のため
+  // 衝突相手（前方の一般車）。なければ生成。深く詰めた状態でも必ず敵の前方に置く。
+  let victim=npcEl;
+  if(!victim){
+    victim=document.createElement('div');victim.className='npc car';
+    victim.innerHTML=carSVG('#999','#555');
+    const vtop=Math.max(80, enemyY-140);          // 敵より十分前方
+    moveSprite(victim,vtop,laneCss(LANE_RIGHT));
+    gameEl.appendChild(victim);npcEl=victim;npcLane=LANE_RIGHT;npcY=vtop;
+  }
+  const killBonus=Math.round(500*((enemyKind==='risky'&&curEnemy.bonus)?curEnemy.bonus:1));
+  G.kills++;G.score+=killBonus;updateScore(killBonus);killPop();
+  comboEl.textContent='相手、制御を失った…';
+
+  // ① ふらふらと蛇行しながら前車へ近づく
+  // targetは必ず敵の現在位置(startTop)より前方(小さいY)になるよう補正し、演出の破綻を防ぐ
+  let t=0;const startTop=enemyY;
+  let targetTop=spriteY(victim,150)+50;
+  if(targetTop>=startTop-30) targetTop=startTop-90;   // 詰まりすぎで逆転/近接していたら前方へ強制
+  const sway=setInterval(()=>{
+   try{
+    t++;
+    const p=Math.min(1,t/22);
+    const y=startTop+(targetTop-startTop)*p;
+    const wob=Math.sin(t*0.6)*26*(1-p*0.3);
+    if(curEnemyEl){
+      moveSprite(curEnemyEl,y,laneCss(LANE_RIGHT+wob),wob*0.3);
+    }
+    if(p>=1){
+      clearInterval(sway);
+      tone(80,.4,'sawtooth',.12);shake(true);
+      if(curEnemyEl){const a=curEnemyEl.querySelector('.animal');if(a)a.textContent='💥';
+        const pl=curEnemyEl.querySelector('.plate');if(pl)pl.remove();}
+      const vg=victim&&victim.querySelector&&victim.querySelector('svg');if(vg)vg.style.opacity='.35';
+      const fx=gameEl.clientWidth/2+40;const fy=Math.max(140,targetTop+40);
+      const scene=document.getElementById('crashScene');const cap=document.getElementById('crashCaption');
+      scene.classList.add('show');
+      placeFire(scene,fx,fy,1.0);placeFire(scene,fx-20,fy+6,0.65);
+      startSmoke(fx,fy);tone(60,1.2,'sawtooth',.10);
+      setTimeout(()=>scene.classList.add('siren'),1500);
+      setTimeout(()=>{cap.textContent=crashAdvice('victim');cap.classList.add('on');},1100);
+      setTimeout(()=>{
+        stopSmoke();scene.classList.remove('show','siren');
+        scene.querySelectorAll('.fire,.smoke').forEach(e=>e.remove());cap.classList.remove('on');
+        if(npcEl){npcEl.remove();npcEl=null;}
+        nextTarget(40);
+      },4600);
+    }
+   }catch(err){clearInterval(sway);stopSmoke();nextTarget(40);}
+  },45);
+}
+function flee(){comboEl.textContent='相手は逃げていった…';G.kills++;G.score+=100;updateScore(100);killPop();nextTarget(50);}
+function surrender(){
+  // 謝罪エンドは廃止。万一呼ばれても、相手が離脱するだけにする。
+  flee();
+}
+// ---------- 土下座 一枚絵 ----------
+// 画像はHTMLへbase64直書きせず、外部WebPとして読み込む（初期パース負荷を大幅削減）
+const DOGEZA_IMG_SRC='assets/dogeza.webp';
+const BADTARGET_IMG_SRC='assets/badtarget.webp';
+const ENDING_ACCIDENT_IMG_SRC='assets/ending_accident.webp';
+function sceneImage(kind){
+  const src = kind==='badtarget' ? BADTARGET_IMG_SRC : DOGEZA_IMG_SRC;
+  const alt = kind==='badtarget' ? '危険な相手の一枚絵' : '土下座の一枚絵';
+  return `<img src="${src}" alt="${alt}" loading="eager" decoding="async">`;
+}
+if(document.getElementById('endingAccidentImg')){document.getElementById('endingAccidentImg').src=ENDING_ACCIDENT_IMG_SRC;}
+
+let dogezaCb=null;
+let dogezaLocked=false;            // 表示直後はタップ無効（連打で飛ばせない）
+function showDogeza(loser,winner,caption,onDone,sceneType='dogeza'){
+  const sc=document.getElementById('dogezaScene');
+  document.getElementById('dogezaArt').innerHTML=sceneImage(sceneType);
+  document.getElementById('dogezaCap').textContent=caption;
+  sc.classList.add('show');
+  tone(180,.5,'sine',.06);
+  dogezaCb=onDone;
+  // 表示直後1.8秒はタップを一切受け付けない（連打しても閉じない）
+  dogezaLocked=true;
+  sc.onclick=null;
+  clearTimeout(sc._lock);
+  sc._lock=setTimeout(()=>{        // 1.8秒後にタップで先へ進めるよう解禁
+    dogezaLocked=false;
+    sc.onclick=closeDogeza;
+  },1800);
+  // 自動で次へ進むのは3.2秒後（ロックの影響を受けない専用フラグで強制クローズ）
+  clearTimeout(sc._t);
+  sc._t=setTimeout(()=>closeDogeza(true),3200);
+}
+function closeDogeza(auto){
+  const sc=document.getElementById('dogezaScene');
+  if(!sc.classList.contains('show'))return;
+  if(dogezaLocked && auto!==true)return;   // ロック中の手動タップは無視（自動進行は通す）
+  dogezaLocked=false;
+  clearTimeout(sc._t);clearTimeout(sc._lock);sc.onclick=null;
+  sc.classList.remove('show');
+  const cb=dogezaCb;dogezaCb=null;if(cb)cb();
+}
+
+function bossTurn(){
+  if(G.mode==='crash'||G.sequencing)return;
+  G.sequencing=true;
+  // 危険車(rank3)を倒しきっても、謝罪エンドにはしない。相手は去り、こちらだけ後味が残る。
+  G.mode='crash';tailHold=false;aoriPanel.classList.remove('show');wipe.classList.remove('show');stopBtn.classList.remove('show');
+  clearTimeout(G._watchdog);
+  G._watchdog=setTimeout(()=>{ if(G.running){nextTarget(60);} },4200);
+  const killBonus=Math.round(1500*(curEnemy.bonus||4));
+  G.kills++;G.score+=killBonus;updateScore(killBonus);killPop();
+  tone(70,.5,'sawtooth',.13);
+  setTimeout(()=>{
+    comboEl.textContent='危険な相手は去っていった…';
+    playerEl.style.transform='translateX(-50%)';
+    nextTarget(60);
+  },900);
+}
+
+// ---------- end ----------
+function triggerGameOver(reason,sub,isCrash,ctx){
+  if(!G.running)return;                  // 既に終了済みなら何もしない（二重防止）
+  // 撃破/土下座などの演出中は割り込ませない。ただし強制終了イベントだけは通す。
+  if(G.mode==='crash' && G.mode!=='forced_end'){return;}
+  G.running=false;G.sequencing=true;aoriPanel.classList.remove('show');wipe.classList.remove('show');stopSmoke();
+  clearTimeout(G._watchdog);
+  if(stopBtn)stopBtn.classList.remove('show');if(choiceBtns)choiceBtns.classList.remove('show');if(dangerEdge)dangerEdge.style.opacity=0;
+  // 進行中の事故余韻演出があれば畳む（競合防止）
+  const sc0=document.getElementById('crashScene');if(sc0){sc0.classList.remove('show','siren');sc0.querySelectorAll('.fire,.smoke').forEach(e=>e.remove());}
+  if(isCrash){
+    // 自車が炎上する余韻を見せてから、必ずゲームオーバー画面へ進める。
+    G.mode='crash';
+    const fx=gameEl.clientWidth/2;const fy=playerTopGlobal()+30;
+    if(playerEl)playerEl.style.filter='brightness(.4) grayscale(.6)';
+    const scene=document.getElementById('crashScene');const cap=document.getElementById('crashCaption');
+    let crashFinished=false;
+    const finishCrash=()=>{
+      if(crashFinished)return;
+      crashFinished=true;
+      try{
+        stopSmoke();
+        if(scene){
+          scene.classList.remove('show','siren');
+          scene.querySelectorAll('.fire,.smoke').forEach(e=>e.remove());
+          scene.onclick=null;
+        }
+        if(cap)cap.classList.remove('on');
+      }catch(e){}
+      document.querySelectorAll('.overlay').forEach(o=>o.classList.remove('show'));
+      document.getElementById('goReason').textContent=reason;
+      document.getElementById('goSub').textContent=sub;
+      document.getElementById('gameover').classList.add('show');
+    };
+    try{
+      scene.classList.add('show');
+      placeFire(scene,fx,fy,1.2);placeFire(scene,fx-24,fy+8,0.75);
+      startSmoke(fx,fy);
+      tone(60,1.4,'sawtooth',.11);shake(true);
+      setTimeout(()=>{if(scene)scene.classList.add('siren');},1500);
+      // 事故状況に応じたアドバイスを表示（読める時間しっかり置く）
+      setTimeout(()=>{if(cap){cap.textContent=crashAdvice(ctx);cap.classList.add('on');}},1100);
+      // タップでも先へ進める。一定時間後にも必ず進める。
+      scene.onclick=finishCrash;
+      setTimeout(finishCrash,5200);
+      setTimeout(finishCrash,7000);
+    }catch(e){
+      finishCrash();
+    }
+    return;
+  }
+  document.getElementById('goReason').textContent=reason;
+  document.getElementById('goSub').textContent=sub;
+  document.getElementById('gameover').classList.add('show');
+}
+const VERDICTS=[
+  {min:0,crime:'道路交通法違反（車間距離不保持）',sentence:'3月以下の懲役 または 5万円以下の罰金',extra:'違反点数2点。…まだ序の口。'},
+  {min:2500,crime:'妨害運転罪（交通の危険のおそれ）',sentence:'3年以下の懲役 または 50万円以下の罰金',extra:'違反点数25点。免許取消、欠格期間2年。'},
+  {min:6000,crime:'妨害運転罪（著しい交通の危険）',sentence:'5年以下の懲役 または 100万円以下の罰金',extra:'違反点数35点。免許取消、欠格期間3年。'},
+  {min:11000,crime:'危険運転致傷罪',sentence:'15年以下の懲役',extra:'前科一犯。職を失い、賠償だけが残る。'},
+  {min:18000,crime:'危険運転致死罪',sentence:'1年以上20年以下の懲役',extra:'実名報道。あの日の「ナメられた！」が、すべての始まりだった。'},
+];
+function showResult(fromGO){
+  if(pendingScoreGain){updateScore(pendingScoreGain);pendingScoreGain=0;}
+  G.running=false;aoriPanel.classList.remove('show');passBtn.style.display='';
+  if(fromGO)document.getElementById('gameover').classList.remove('show');
+  let v=VERDICTS[0];for(const x of VERDICTS)if(G.score>=x.min)v=x;
+  document.getElementById('verdictBox').innerHTML=`<div class="crime">${v.crime}</div><div class="sentence">${v.sentence}</div><div class="extra">${v.extra}</div><div class="note">※上記の罪状・量刑表示は、交通安全啓発のための簡略表現です。実際の法的評価や処分は、事故態様・証拠・被害状況などにより異なります。</div>`;
+  document.getElementById('result').classList.add('show');
+}
+function toHorror(){
+  document.querySelectorAll('.overlay').forEach(o=>o.classList.remove('show'));
+  const h=document.getElementById('horror');
+  const img=document.getElementById('endingAccidentImg');
+  if(img)img.src=ENDING_ACCIDENT_IMG_SRC;
+  setTimeout(()=>h.classList.add('show'),300);
+}
+</script>
+</body>
+</html>
